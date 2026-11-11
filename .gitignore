@@ -1,0 +1,52 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches and testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Environments
+.env
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Operating System & IDE metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Large Raw Datasets & Binary Pipeline Artifacts
+*.csv
+*.zip
+*.tar.gz
+*.db
+*.sqlite
+*.sqlite3
+
+# Specific Data Directory Rules
+data/raw/*
+!data/raw/.gitkeep
+
+# Exclude generated large binary Parquet and Pickle models
+data/processed/*.parquet
+data/processed/*.pkl
+
+# Ensure validation summary JSON reports remain tracked
+!data/processed/*.json
