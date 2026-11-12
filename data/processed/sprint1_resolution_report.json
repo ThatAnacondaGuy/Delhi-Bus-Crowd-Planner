@@ -1,0 +1,185 @@
+{
+  "metadata": {
+    "sprint": "Sprint 1",
+    "pipeline": "src.pipeline.sprint1_entity_resolution",
+    "executed_at": "2026-11-15T12:50:25.742151",
+    "status": "COMPLETED"
+  },
+  "vehicle_number_audit": {
+    "true_null_count": 1242167,
+    "true_null_pct": 48.5241,
+    "domain_note": "Literal 'NULL' strings were correctly identified as true unassigned/missing fleet IDs"
+  },
+  "route_resolution": {
+    "total_ticketing_routes": 2259,
+    "matched_routes": 2060,
+    "route_match_pct": 91.19,
+    "method_breakdown": {
+      "exact_short": 1980,
+      "exact_long": 0,
+      "strip_trailing_digits": 4,
+      "strip_stl": 52,
+      "strip_stl_and_digits": 4,
+      "strip_lstl": 20,
+      "unmatched": 199
+    }
+  },
+  "stop_resolution": {
+    "unique_route_stop_pairs": 69640,
+    "raw_gtfs_exact_match_pct_sprint0": 48.27,
+    "post_resolution_stop_match_pct_sprint1": 93.13,
+    "exact_matched_pairs": 48396,
+    "fuzzy_matched_pairs": 16462,
+    "unmatched_pairs": 4782
+  },
+  "directional_trip_leg_validation": {
+    "total_ticketing_records": 2559899,
+    "total_passengers": 2753606,
+    "valid_forward_trips": {
+      "transaction_count": 2394241,
+      "transaction_pct": 93.53,
+      "passenger_volume": 2574781,
+      "passenger_pct": 93.51
+    },
+    "reversed_sequence_anomalies": {
+      "transaction_count": 60298,
+      "transaction_pct": 2.36,
+      "passenger_volume": 64908,
+      "passenger_pct": 2.36
+    },
+    "same_stop_anomalies": {
+      "transaction_count": 6019,
+      "transaction_pct": 0.24,
+      "passenger_volume": 6538,
+      "passenger_pct": 0.24
+    },
+    "unresolved_records": {
+      "transaction_count": 99341,
+      "transaction_pct": 3.88,
+      "passenger_volume": 107379,
+      "passenger_pct": 3.9
+    }
+  },
+  "top_15_unmatched_or_anomaly_pairs": [
+    {
+      "raw_route": "502DOWN",
+      "raw_start_stop": "Pts",
+      "raw_end_stop": "S.J. Hospital",
+      "transaction_count": 639,
+      "passenger_volume": 717.0,
+      "anomaly_category": "Reversed Sequence"
+    },
+    {
+      "raw_route": "D-1103DOWN",
+      "raw_start_stop": "Ats Tower",
+      "raw_end_stop": "Mahipal Pur",
+      "transaction_count": 576,
+      "passenger_volume": 841.0,
+      "anomaly_category": "Origin Unresolved"
+    },
+    {
+      "raw_route": "469UP",
+      "raw_start_stop": "Hamdard Nagar",
+      "raw_end_stop": "Said Ul Zeb Village",
+      "transaction_count": 572,
+      "passenger_volume": 586.0,
+      "anomaly_category": "Reversed Sequence"
+    },
+    {
+      "raw_route": "85UP",
+      "raw_start_stop": "Telephone Exchange",
+      "raw_end_stop": "Shadi Pur Metro Station",
+      "transaction_count": 479,
+      "passenger_volume": 547.0,
+      "anomaly_category": "Origin Unresolved"
+    },
+    {
+      "raw_route": "D-1103UP",
+      "raw_start_stop": "Ptc",
+      "raw_end_stop": "Igi Airport Terminal-2",
+      "transaction_count": 429,
+      "passenger_volume": 535.0,
+      "anomaly_category": "Origin Unresolved"
+    },
+    {
+      "raw_route": "567BSTLUP",
+      "raw_start_stop": "Nangloi (Najafgarh Road)",
+      "raw_end_stop": "Chanchal Park",
+      "transaction_count": 401,
+      "passenger_volume": 439.0,
+      "anomaly_category": "Both Stops Unresolved"
+    },
+    {
+      "raw_route": "33UP",
+      "raw_start_stop": "New Seema Puri",
+      "raw_end_stop": "Isbt Anand Vihar",
+      "transaction_count": 390,
+      "passenger_volume": 403.0,
+      "anomaly_category": "Reversed Sequence"
+    },
+    {
+      "raw_route": "D-3302DOWN",
+      "raw_start_stop": "Rm Stadium",
+      "raw_end_stop": "Begumpur",
+      "transaction_count": 383,
+      "passenger_volume": 393.0,
+      "anomaly_category": "Origin Unresolved"
+    },
+    {
+      "raw_route": "469UP",
+      "raw_start_stop": "Devoli Road Crossing",
+      "raw_end_stop": "Said Ul Zeb Village",
+      "transaction_count": 376,
+      "passenger_volume": 394.0,
+      "anomaly_category": "Reversed Sequence"
+    },
+    {
+      "raw_route": "78UP",
+      "raw_start_stop": "Shadi Pur Depot",
+      "raw_end_stop": "Inder Puri Kirshi Kunj",
+      "transaction_count": 374,
+      "passenger_volume": 476.0,
+      "anomaly_category": "Destination Unresolved"
+    },
+    {
+      "raw_route": "469UP",
+      "raw_start_stop": "Batra Hosp",
+      "raw_end_stop": "Said Ul Zeb Village",
+      "transaction_count": 359,
+      "passenger_volume": 386.0,
+      "anomaly_category": "Reversed Sequence"
+    },
+    {
+      "raw_route": "463UP",
+      "raw_start_stop": "Vayusena Bad",
+      "raw_end_stop": "Said Ul Zeb Village",
+      "transaction_count": 339,
+      "passenger_volume": 364.0,
+      "anomaly_category": "Origin Unresolved"
+    },
+    {
+      "raw_route": "469UP",
+      "raw_start_stop": "Vayusena Bad",
+      "raw_end_stop": "Said Ul Zeb Village",
+      "transaction_count": 325,
+      "passenger_volume": 347.0,
+      "anomaly_category": "Origin Unresolved"
+    },
+    {
+      "raw_route": "469UP",
+      "raw_start_stop": "Ambedkar Nagar Depot",
+      "raw_end_stop": "Said Ul Zeb Village",
+      "transaction_count": 287,
+      "passenger_volume": 298.0,
+      "anomaly_category": "Reversed Sequence"
+    },
+    {
+      "raw_route": "502DOWN",
+      "raw_start_stop": "Lado Sarai Dda Flats",
+      "raw_end_stop": "S.J. Hospital",
+      "transaction_count": 282,
+      "passenger_volume": 301.0,
+      "anomaly_category": "Reversed Sequence"
+    }
+  ]
+}
