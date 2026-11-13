@@ -1,0 +1,109 @@
+{
+  "metadata": {
+    "sprint": "Sprint 2",
+    "pipeline": "src.pipeline.sprint2_crowding_model",
+    "executed_at": "2026-11-15T13:20:55.627994",
+    "status": "COMPLETED"
+  },
+  "model_parameters": {
+    "kappa_penetration": 25.0,
+    "cap_ac_pax": 70,
+    "cap_non_ac_pax": 65,
+    "null_vehicle_rate": 0.4852,
+    "sigmoid_centre_L": 0.65,
+    "sigmoid_steepness_k": 3.5,
+    "crowding_tier_thresholds": {
+      "Low": "< 0.35",
+      "Moderate": "0.35 \u2013 0.70",
+      "High": "> 0.70"
+    }
+  },
+  "output_rows": 1209599,
+  "validation": {
+    "diurnal_windows": {
+      "Early Morning (05:00\u201307:30)": {
+        "mean_crowding_score": 0.0992,
+        "p90_crowding_score": 0.267,
+        "tier_pct_Low": 92.4,
+        "tier_pct_Moderate": 4.7,
+        "tier_pct_High": 2.9
+      },
+      "Morning Peak  (08:30\u201310:30)": {
+        "mean_crowding_score": 0.1889,
+        "p90_crowding_score": 0.5939,
+        "tier_pct_Low": 82.2,
+        "tier_pct_Moderate": 10.2,
+        "tier_pct_High": 7.6
+      },
+      "Afternoon Lull(13:00\u201315:30)": {
+        "mean_crowding_score": 0.0518,
+        "p90_crowding_score": 0.1018,
+        "tier_pct_Low": 98.1,
+        "tier_pct_Moderate": 1.4,
+        "tier_pct_High": 0.5
+      },
+      "Evening Peak  (17:30\u201320:00)": {
+        "mean_crowding_score": 0.1326,
+        "p90_crowding_score": 0.4089,
+        "tier_pct_Low": 88.2,
+        "tier_pct_Moderate": 7.2,
+        "tier_pct_High": 4.6
+      },
+      "Late Night    (21:30\u201323:30)": {
+        "mean_crowding_score": 0.0466,
+        "p90_crowding_score": 0.1214,
+        "tier_pct_Low": 97.1,
+        "tier_pct_Moderate": 2.1,
+        "tier_pct_High": 0.7
+      }
+    },
+    "directional_asymmetry": {
+      "717AUP/717ADOWN": {
+        "morning_peak_UP": 0.8019,
+        "morning_peak_DOWN": 0.648,
+        "evening_peak_UP": 0.6318,
+        "evening_peak_DOWN": 0.7987
+      },
+      "729UP/729DOWN": {
+        "morning_peak_UP": 0.3018,
+        "morning_peak_DOWN": 0.4593,
+        "evening_peak_UP": 0.4127,
+        "evening_peak_DOWN": 0.2642
+      },
+      "511AUP/511ADOWN": {
+        "morning_peak_UP": 0.5649,
+        "morning_peak_DOWN": 0.3274,
+        "evening_peak_UP": 0.1953,
+        "evening_peak_DOWN": 0.2809
+      },
+      "578UP/578DOWN": {
+        "morning_peak_UP": 0.2005,
+        "morning_peak_DOWN": 0.5122,
+        "evening_peak_UP": 0.3014,
+        "evening_peak_DOWN": 0.1924
+      }
+    },
+    "overall_tier_distribution": {
+      "Low": {
+        "count": 1100148,
+        "pct": 90.95
+      },
+      "Moderate": {
+        "count": 67901,
+        "pct": 5.61
+      },
+      "High": {
+        "count": 41550,
+        "pct": 3.44
+      }
+    }
+  },
+  "summary_stats": {
+    "mean_crowding_score": 0.1161,
+    "median_crowding_score": 0.0397,
+    "p90_crowding_score": 0.3187,
+    "max_crowding_score": 1.0,
+    "mean_est_pax_per_bus": 13.99,
+    "max_est_pax_per_bus": 860.0
+  }
+}
