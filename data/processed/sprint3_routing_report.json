@@ -1,0 +1,190 @@
+{
+  "metadata": {
+    "sprint": "Sprint 3",
+    "component": "src.routing.mcraptor",
+    "evaluated_at": "2026-11-15T13:40:42",
+    "status": "COMPLETED"
+  },
+  "performance": {
+    "init_time_sec": 6.96,
+    "mean_latency_ms": 536.87,
+    "median_latency_ms": 462.97,
+    "p90_latency_ms": 873.51,
+    "min_latency_ms": 327.07,
+    "max_latency_ms": 900.4
+  },
+  "benchmarks": [
+    {
+      "corridor": "Badarpur / Ali Village -> ITO (Trans-Corridor Arterial)",
+      "period": "Morning Peak",
+      "departure_time": "09:00:00",
+      "latency_ms": 327.07,
+      "itineraries_found": 1,
+      "itineraries": [
+        {
+          "label": "Recommended (Least Crowded)",
+          "route_chain": "422AUP -> DS-12DOWN -> 317UP",
+          "duration_min": 24.4,
+          "transfers": 2,
+          "avg_crowding": 0.072,
+          "max_crowding": 0.2,
+          "tier": "Low",
+          "fare_inr": 45
+        }
+      ]
+    },
+    {
+      "corridor": "Badarpur / Ali Village -> ITO (Trans-Corridor Arterial)",
+      "period": "Afternoon Lull",
+      "departure_time": "14:30:00",
+      "latency_ms": 336.22,
+      "itineraries_found": 1,
+      "itineraries": [
+        {
+          "label": "Recommended (Least Crowded)",
+          "route_chain": "405UP -> DS-12DOWN -> 317STLUP",
+          "duration_min": 24.4,
+          "transfers": 2,
+          "avg_crowding": 0.12,
+          "max_crowding": 0.15,
+          "tier": "Low",
+          "fare_inr": 45
+        }
+      ]
+    },
+    {
+      "corridor": "Nehru Place -> Dhaula Kuan (Ring Road Arterial)",
+      "period": "Morning Peak",
+      "departure_time": "09:00:00",
+      "latency_ms": 900.4,
+      "itineraries_found": 2,
+      "itineraries": [
+        {
+          "label": "Fastest Route",
+          "route_chain": "567AUP",
+          "duration_min": 41.4,
+          "transfers": 0,
+          "avg_crowding": 0.131,
+          "max_crowding": 0.238,
+          "tier": "Low",
+          "fare_inr": 15
+        },
+        {
+          "label": "Recommended (Least Crowded)",
+          "route_chain": "724EXTDOWN",
+          "duration_min": 41.5,
+          "transfers": 0,
+          "avg_crowding": 0.088,
+          "max_crowding": 0.15,
+          "tier": "Low",
+          "fare_inr": 25
+        }
+      ]
+    },
+    {
+      "corridor": "Nehru Place -> Dhaula Kuan (Ring Road Arterial)",
+      "period": "Afternoon Lull",
+      "departure_time": "14:30:00",
+      "latency_ms": 861.99,
+      "itineraries_found": 2,
+      "itineraries": [
+        {
+          "label": "Fastest Route",
+          "route_chain": "567AUP",
+          "duration_min": 41.4,
+          "transfers": 0,
+          "avg_crowding": 0.15,
+          "max_crowding": 0.15,
+          "tier": "Low",
+          "fare_inr": 15
+        },
+        {
+          "label": "Recommended (Least Crowded)",
+          "route_chain": "724EXTDOWN",
+          "duration_min": 41.5,
+          "transfers": 0,
+          "avg_crowding": 0.04,
+          "max_crowding": 0.15,
+          "tier": "Low",
+          "fare_inr": 25
+        }
+      ]
+    },
+    {
+      "corridor": "Uttam Nagar -> Shivaji Stadium (West to Central CBD)",
+      "period": "Morning Peak",
+      "departure_time": "09:00:00",
+      "latency_ms": 501.98,
+      "itineraries_found": 1,
+      "itineraries": [
+        {
+          "label": "Recommended (Least Crowded)",
+          "route_chain": "724UP -> DS-16DOWN",
+          "duration_min": 16.5,
+          "transfers": 1,
+          "avg_crowding": 0.16,
+          "max_crowding": 0.2,
+          "tier": "Low",
+          "fare_inr": 35
+        }
+      ]
+    },
+    {
+      "corridor": "Uttam Nagar -> Shivaji Stadium (West to Central CBD)",
+      "period": "Afternoon Lull",
+      "departure_time": "14:30:00",
+      "latency_ms": 579.61,
+      "itineraries_found": 1,
+      "itineraries": [
+        {
+          "label": "Recommended (Least Crowded)",
+          "route_chain": "724UP -> DS-16DOWN",
+          "duration_min": 16.5,
+          "transfers": 1,
+          "avg_crowding": 0.086,
+          "max_crowding": 0.15,
+          "tier": "Low",
+          "fare_inr": 35
+        }
+      ]
+    },
+    {
+      "corridor": "GTB Nagar -> Pitampura (North to North-West Cross-Town)",
+      "period": "Morning Peak",
+      "departure_time": "09:00:00",
+      "latency_ms": 363.75,
+      "itineraries_found": 1,
+      "itineraries": [
+        {
+          "label": "Optimal (Fastest & Least Crowded)",
+          "route_chain": "114UP",
+          "duration_min": 32.6,
+          "transfers": 0,
+          "avg_crowding": 0.016,
+          "max_crowding": 0.15,
+          "tier": "Low",
+          "fare_inr": 10
+        }
+      ]
+    },
+    {
+      "corridor": "GTB Nagar -> Pitampura (North to North-West Cross-Town)",
+      "period": "Afternoon Lull",
+      "departure_time": "14:30:00",
+      "latency_ms": 423.97,
+      "itineraries_found": 1,
+      "itineraries": [
+        {
+          "label": "Optimal (Fastest & Least Crowded)",
+          "route_chain": "114UP",
+          "duration_min": 32.6,
+          "transfers": 0,
+          "avg_crowding": 0.106,
+          "max_crowding": 0.15,
+          "tier": "Low",
+          "fare_inr": 10
+        }
+      ]
+    }
+  ]
+}
