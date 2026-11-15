@@ -95,6 +95,14 @@ where $L$ is the calibrated passenger-to-capacity load ratio, $L_0 = 0.65$ is th
 - $C(L_0) \approx 0.500$ (seats fully occupied, moderate comfort tier).
 - $C(L \ge 1.0) \to 1.000$ (severe crush load, steep penalty).
 
+### 3.4 Transit Reliability & Behavioral Nudge Upgrades
+1. **Empirical Route Headways & Perception Weighting**:
+   Route headways $H_{r,t}$ are computed per route and time window, estimating realistic wait times $W_{\text{base}}(r, t) = \min(15.0, 0.5 \times H_{r,t})$ with a $1.5\times$ out-of-vehicle wait perception multiplier in generalized cost.
+2. **Crush Load Left-Behind Risk Penalty**:
+   When boarding segments exceed 80% occupancy, the engine calculates missed-bus denial probability $p_{\text{deny}}$ and adds $1.7\times$ expected headway delay to prevent passengers from being routed into overcrowded buses they cannot physically board.
+3. **Smart $\pm 15$-Minute Departure Shift Nudge**:
+   During peak periods ($C \ge 0.45$), the system automatically evaluates departure times 15 minutes earlier and later. If shifting departure reduces average crowding by $\ge 15\%$ without increasing travel time by $> 10\%$, a proactive nudge advises the commuter to bypass crush loads.
+
 ---
 
 ## 4. Empirical Validation & Citywide Impact

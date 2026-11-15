@@ -29,6 +29,9 @@ This repository delivers an **end-to-end, production-grade Crowdedness-Aware Jou
 | **Diurnal Peak vs. Lull Contrast** | Uniform / Static | **72.7% drop in midday load** | Morning peak P90 = **0.594**; Afternoon lull P90 = **0.102**; Evening peak = **0.409** |
 | **Tidal Asymmetry Captured** | Undifferentiated | **4.55× directional swing** | Route `717A`: 0.802 morning outbound vs. 0.176 return; flips to 0.799 in evening |
 | **McRAPTOR Query Latency** | Multi-second graph search | **~170 ms end-to-end** | Sub-microsecond ($0.27\,\mu\text{s}$) array lookups with automatic time-slot progression |
+| **Headway Wait Modeling** | Flat static wait assumption | **Route-specific $H_{r,t}$** | Empirical headway per route across 5 day windows; $1.5\times$ out-of-vehicle wait penalty |
+| **Boarding-Denial Crush Risk** | Zero missed-bus awareness | **$p_{\text{deny}}$ for $C > 0.80$** | Prevents routing into crush-load buses ($1.7\times$ expected missed-bus delay penalty) |
+| **Smart Departure Nudge** | Fixed departure time only | **$\pm 15$ min shoulder search** | Proactively identifies $\ge 15\%$ crowd drops during peak hours |
 | **Road-Hugging Map Polylines** | Straight-line approximations | **80,859 shaped segments** | Monotonic shape vertex slicing over 965k coordinates from GTFS `shapes.txt` |
 | **Footpath Transfer Topology** | 0 transfer edges | **23,354 walking edges** | Haversine binary search ($\pm 300\text{m}$, $v=1.2\text{ m/s}$) precomputed in 3.5s |
 
@@ -103,6 +106,7 @@ delhi-crowd-planner/
 │       ├── sprint1_resolution_report.json          # Entity resolution & fuzzy match benchmarks
 │       ├── sprint2_validation_report.json          # Crowding validation & diurnal distributions
 │       ├── sprint3_routing_report.json             # McRAPTOR benchmark corridors & latency report
+│       ├── route_headways.json                     # Empirical route headways across 5 diurnal windows
 │       ├── canonical_route_stops.parquet           # [Generated] Canonical stops (83,435 stops, 2,574 routes)
 │       ├── resolved_tickets.parquet                # [Generated] Resolved forward tickets (2.57M pax)
 │       ├── segment_crowding.parquet                # [Generated] 1.2M segment-time-slot crowding index

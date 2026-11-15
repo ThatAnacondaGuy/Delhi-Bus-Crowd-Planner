@@ -274,9 +274,41 @@ class McRaptorRouter:
             self.segment_shapes = {}
             print("[McRaptorRouter] Shape cache not found — polylines will be straight lines.")
 
+        # 6. Load empirical route headways cache
+        import json as _json
+        headways_path = os.path.join(proc_dir, "route_headways.json")
+        if os.path.exists(headways_path):
+            with open(headways_path, "r", encoding="utf-8") as _hf:
+                self.route_headways: Dict[str, Dict[str, float]] = _json.load(_hf)
+            print(f"[McRaptorRouter] Loaded empirical headways for {len(self.route_headways):,} routes.")
+        else:
+            self.route_headways = {}
+            print("[McRaptorRouter] Headway cache not found — using 12.0m fallback.")
+
         self.init_duration_sec = time.time() - t0
         print(f"[McRaptorRouter] Initialized in {self.init_duration_sec:.2f}s "
               f"({self.n_stops:,} stops, {self.n_routes:,} routes, {total_transfer_edges:,} transfer edges).")
+
+    def get_route_headway(self, route_id: int, time_slot: int) -> float:
+        """
+        Returns empirical headway H_{r,t} in minutes for a given route and time slot.
+        Clamped to [4.0, 30.0] min with 12.0 min fallback.
+        """
+        if 10 <= time_slot <= 16:
+            w = 'Early Morning'
+        elif 17 <= time_slot <= 22:
+            w = 'Morning Peak'
+        elif 23 <= time_slot <= 32:
+            w = 'Afternoon Lull'
+        elif 33 <= time_slot <= 40:
+            w = 'Evening Peak'
+        else:
+            w = 'Late Night'
+
+        r_dict = self.route_headways.get(str(route_id))
+        if r_dict and w in r_dict:
+            return float(r_dict[w])
+        return 12.0
 
     # ─────────────────────────── Spatial Helpers ───────────────────────────────
 
@@ -470,11 +502,31 @@ class McRaptorRouter:
                     # Consider boarding at s_idx
                     prev_c = best_cost[k - 1, s_idx]
                     if prev_c < best_dest_cost:
-                        wait_time = INITIAL_BOARDING_WAIT_SEC
+                        prev_t = best_time[k - 1, s_idx]
+                        b_slot = int((prev_t % 86400) // 1800)
+                        r_id = self.idx_to_route_id[r_idx]
+                        h_min = self.get_route_headway(r_id, b_slot)
+                        w_base_sec = min(15.0, 0.5 * h_min) * 60.0
+                        wait_cost = 1.5 * w_base_sec
+
+                        # Left-behind boarding denial penalty when C(e,t) > 0.80
+                        if i < n_stops - 1:
+                            c_board = float(self.route_segs_cs[r_idx][i, day_code, b_slot])
+                        else:
+                            c_board = 0.0
+
+                        if c_board > 0.80:
+                            p_deny = min(0.75, ((c_board - 0.80) / 0.20) * 0.75)
+                            e_delay_sec = p_deny * (h_min * 60.0)
+                            denial_cost = 1.7 * e_delay_sec
+                        else:
+                            e_delay_sec = 0.0
+                            denial_cost = 0.0
+
                         tr_pen = TRANSFER_PENALTY_SEC if k > 1 else 0.0
-                        cand_c = prev_c + wait_time + tr_pen
+                        cand_c = prev_c + wait_cost + denial_cost + tr_pen
                         if cand_c < best_dest_cost:
-                            cand_t = best_time[k - 1, s_idx] + wait_time
+                            cand_t = prev_t + w_base_sec + e_delay_sec
                             if active_board_stop_idx < 0 or cand_c < cur_cost:
                                 active_board_stop_idx = s_idx
                                 active_board_pos = i
@@ -612,6 +664,7 @@ class McRaptorRouter:
         cur_time_sec = dep_sec
         total_fare_inr = 0
         total_walk_sec = 0.0
+        total_wait_sec = 0.0
         all_bus_crowd_scores: List[float] = []
         max_bus_crowd_score = 0.0
 
@@ -661,8 +714,23 @@ class McRaptorRouter:
                 if board_pos < 0 or alight_pos < 0 or alight_pos <= board_pos:
                     continue
 
-                # Add headway waiting time (3 minutes)
-                cur_time_sec += INITIAL_BOARDING_WAIT_SEC
+                # Headway wait time and left-behind risk
+                board_slot = int((cur_time_sec % 86400) // 1800)
+                h_min = self.get_route_headway(r_id, board_slot)
+                w_base_sec = min(15.0, 0.5 * h_min) * 60.0
+
+                cs_mat = self.route_segs_cs[r_idx]
+                first_seg_cs = float(cs_mat[board_pos, day_code, board_slot]) if board_pos < len(cs_mat) else 0.0
+                if first_seg_cs > 0.80:
+                    p_deny = min(0.75, ((first_seg_cs - 0.80) / 0.20) * 0.75)
+                    e_delay_sec = p_deny * (h_min * 60.0)
+                else:
+                    p_deny = 0.0
+                    e_delay_sec = 0.0
+
+                leg_wait_sec = w_base_sec + e_delay_sec
+                cur_time_sec += leg_wait_sec
+                total_wait_sec += leg_wait_sec
 
                 leg_segments = []
                 leg_dur_sec = 0.0
@@ -670,7 +738,6 @@ class McRaptorRouter:
                 leg_crowd_scores: List[float] = []
 
                 durs = self.route_segs_dur[r_idx]
-                cs_mat = self.route_segs_cs[r_idx]
 
                 for pos in range(board_pos, alight_pos):
                     u_sidx = stops[pos][0]
@@ -717,6 +784,14 @@ class McRaptorRouter:
 
                 leg_avg_cs = float(np.mean(leg_crowd_scores)) if leg_crowd_scores else 0.15
                 leg_max_cs = float(np.max(leg_crowd_scores)) if leg_crowd_scores else 0.15
+                leg_risk_cs = max(first_seg_cs, leg_max_cs)
+                if leg_risk_cs > 0.85:
+                    leg_risk = "High"
+                elif leg_risk_cs > 0.75:
+                    leg_risk = "Moderate"
+                else:
+                    leg_risk = "Low"
+
                 leg_fare = compute_bus_fare(leg_dist_m / 1000.0, is_ac)
                 total_fare_inr += leg_fare
 
@@ -731,9 +806,13 @@ class McRaptorRouter:
                     "is_ac": is_ac,
                     "from_stop": self.stop_info[from_sid],
                     "to_stop": self.stop_info[to_sid],
-                    "duration_min": round((leg_dur_sec + INITIAL_BOARDING_WAIT_SEC) / 60.0, 1),
+                    "duration_min": round((leg_dur_sec + leg_wait_sec) / 60.0, 1),
                     "bus_travel_min": round(leg_dur_sec / 60.0, 1),
-                    "wait_duration_min": round(INITIAL_BOARDING_WAIT_SEC / 60.0, 1),
+                    "wait_duration_min": round(leg_wait_sec / 60.0, 1),
+                    "est_wait_min": round(leg_wait_sec / 60.0, 1),
+                    "headway_min": round(h_min, 1),
+                    "boarding_risk": leg_risk,
+                    "boarding_denial_prob": round(p_deny, 2),
                     "distance_km": round(leg_dist_m / 1000.0, 2),
                     "estimated_fare_inr": leg_fare,
                     "avg_crowding_score": round(leg_avg_cs, 3),
@@ -749,10 +828,20 @@ class McRaptorRouter:
 
         route_chain = " -> ".join([b["route_short_name"] for b in bus_legs])
 
+        if max_bus_crowd_score > 0.85:
+            itin_risk = "High"
+        elif max_bus_crowd_score > 0.75:
+            itin_risk = "Moderate"
+        else:
+            itin_risk = "Low"
+
         return {
             "route_chain": route_chain,
             "total_duration_min": round(total_dur_sec / 60.0, 1),
             "walk_duration_min": round(total_walk_sec / 60.0, 1),
+            "wait_duration_min": round(total_wait_sec / 60.0, 1),
+            "est_wait_min": round(total_wait_sec / 60.0, 1),
+            "boarding_risk": itin_risk,
             "transfers": transfers_count,
             "avg_crowding_score": round(avg_cs, 3),
             "max_crowding_score": round(max_bus_crowd_score, 3),
@@ -769,7 +858,8 @@ class McRaptorRouter:
         dest_stop: str,
         departure_time_str: str = "09:00:00",
         day_type: str = "weekday",
-        beta: float = 0.6
+        beta: float = 0.6,
+        check_nudge: bool = True
     ) -> Dict[str, Any]:
         """
         Computes up to 3 non-dominated Pareto-optimal itineraries:
@@ -872,6 +962,45 @@ class McRaptorRouter:
             else:
                 itin["label"] = f"Itinerary {idx + 1}"
 
+        # Smart +/- 15-Minute Departure Shift Nudge (Upgrade B)
+        departure_nudge = None
+        primary_itin = final_list[0] if final_list else None
+        if check_nudge and primary_itin is not None:
+            c0 = float(primary_itin.get("avg_crowding_score", 0.0))
+            risk0 = primary_itin.get("boarding_risk", "Low")
+            t0 = float(primary_itin.get("total_duration_min", 1.0))
+
+            if c0 >= 0.45 or risk0 != "Low":
+                shifts = [(-900, "15 mins earlier"), (900, "15 mins later")]
+                best_nudge = None
+                best_drop = 0.0
+
+                for offset_sec, shift_label in shifts:
+                    shifted_sec = (dep_sec + offset_sec) % 86400
+                    shifted_itin = self._raptor_search(orig_sid, dest_sid, shifted_sec, day_code, beta)
+                    if shifted_itin is not None and shifted_itin.get("legs"):
+                        c_new = float(shifted_itin.get("avg_crowding_score", 0.0))
+                        t_new = float(shifted_itin.get("total_duration_min", t0))
+                        abs_drop = c0 - c_new
+                        drop_pct = (abs_drop / c0 * 100.0) if c0 > 0 else 0.0
+                        time_increase_pct = ((t_new - t0) / t0) if t0 > 0 else 0.0
+
+                        # Must reduce crowding by >= 15% (absolute drop >= 0.08)
+                        # without increasing total travel time by > 10%
+                        if abs_drop >= 0.08 and drop_pct >= 15.0 and time_increase_pct <= 0.10:
+                            if abs_drop > best_drop:
+                                best_drop = abs_drop
+                                hours = int(shifted_sec // 3600) % 24
+                                mins = int((shifted_sec % 3600) // 60)
+                                best_nudge = {
+                                    "recommended_time": f"{hours:02d}:{mins:02d}",
+                                    "shift_label": shift_label,
+                                    "crowding_drop_pct": int(round(drop_pct)),
+                                    "new_avg_crowding": round(c_new, 2)
+                                }
+
+                departure_nudge = best_nudge
+
         return {
             "origin": self.stop_info[orig_sid],
             "destination": self.stop_info[dest_sid],
@@ -879,5 +1008,6 @@ class McRaptorRouter:
             "day_type": day_type,
             "user_beta": beta,
             "itineraries_count": len(final_list),
+            "departure_nudge": departure_nudge,
             "itineraries": final_list
         }

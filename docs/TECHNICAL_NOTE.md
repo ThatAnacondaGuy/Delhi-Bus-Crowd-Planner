@@ -162,13 +162,19 @@ $$\text{Tidal Ratio} = \frac{C_{\text{morning}}(\text{Inbound})}{C_{\text{mornin
 
 ## 5. Multi-Criteria McRAPTOR Routing Engine
 
-### 5.1 Generalized Discomfort Objective Function
-For transit edge $e$ traversed at time $t$ with scheduled transit duration $T(e)$ and crowding score $C(e, t) \in [0, 1]$, the generalized travel cost is:
-$$\text{Cost}(e) = T(e) \cdot \left(1 + \beta \cdot C(e, t)^{1.5}\right) + W_{\text{transfer}}$$
+### 5.1 Generalized Discomfort Objective Function & Reliability Modeling
+For transit edge $e$ on route $r$ traversed at time $t$ with scheduled transit duration $T(e)$ and crowding score $C(e, t) \in [0, 1]$, the generalized travel cost incorporates in-vehicle travel time, crowd discomfort, empirical headway waiting time, and left-behind risk:
+$$\text{Cost}(e) = T(e) \cdot \left(1 + \beta \cdot C(e, t)^{1.5}\right) + \text{Cost}_{\text{wait}}(r, t) + \text{Cost}_{\text{deny}}(e, t) + W_{\text{transfer}}$$
 where:
 - $\beta \ge 0$ is the user discomfort weight parameter.
 - $W_{\text{transfer}} = 300\text{ s}$ (5-minute discomfort penalty per transfer) prevents trivial one-stop transfers.
-- Initial boarding incurs an estimated wait penalty of $180\text{ s}$ (3 minutes).
+- **Empirical Headway Waiting Time**:
+  Route headway $H_{r,t}$ (clamped to $[4.0, 30.0]$ min) is derived per canonical route across 5 time-of-day windows (`Early Morning`, `Morning Peak`, `Afternoon Lull`, `Evening Peak`, `Late Night`). Expected wait is $W_{\text{base}}(r, t) = \min(15.0, 0.5 \times H_{r,t})$, weighted by a **$1.5\times$ out-of-vehicle wait perception multiplier**:
+  $$\text{Cost}_{\text{wait}}(r, t) = 1.5 \times (W_{\text{base}}(r, t) \times 60\text{s})$$
+- **Left-Behind (Boarding-Denial) Risk ($C > 0.80$)**:
+  When boarding segments operate at crush capacity ($C(e,t) > 0.80$), commuters face significant left-behind probability:
+  $$p_{\text{deny}} = \min\left(0.75,\ \max\left(0,\ \frac{C(e,t) - 0.80}{0.20}\right) \times 0.75\right)$$
+  The expected missed-bus delay $E[\Delta T_{\text{deny}}] = p_{\text{deny}} \times (H_{r,t} \times 60\text{s})$ is penalized at a **$1.7\times$ reliability multiplier** in generalized cost. Boarding risk is classified as `"High"` ($C > 0.85$), `"Moderate"` ($0.75 < C \le 0.85$), or `"Low"`.
 
 ### 5.2 Footpath Transfer Topology & Opposite-Platform Access
 1. **Latitude-Window Footpath Precomputation**:
@@ -182,6 +188,13 @@ where:
 Segment crowding scores and travel durations are indexed into dense NumPy matrices:
 $$\text{CS}[r_{\text{idx}}, \text{seg}_{\text{idx}}, d_{\text{code}}, \tau] \in \mathbb{R}^{32}$$
 Fetching segment cost takes **$0.27\,\mu\text{s}$ ($O(1)$)**. As the journey traverses successive segments and footpaths, the current arrival time $t_{\text{arr}}$ automatically updates the active half-hour time slot $\tau = \lfloor (t_{\text{arr}} \pmod{86400}) / 1800 \rfloor$.
+
+### 5.4 Smart $\pm 15$-Minute Departure Shift Nudge
+During peak shoulder periods where the primary itinerary experiences severe crowding ($C \ge 0.45$ or `boarding_risk != "Low"`), the router conducts lightweight forward/backward evaluations at $t - 15\text{ min}$ and $t + 15\text{ min}$.
+If shifting departure time yields:
+1. Average crowding reduction $\ge 15\%$ (absolute drop $\ge 0.08$), and
+2. Travel time penalty $\le 10\%$,
+the engine attaches an actionable `departure_nudge` payload, prompting commuters to travel slightly earlier or later to bypass crush loads.
 
 ### 5.4 Corridor Benchmark Comparisons
 

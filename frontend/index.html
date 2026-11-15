@@ -531,6 +531,14 @@
     }
 
     // ──────────────────────────── RENDER ITINERARIES ────────────────────────────
+    function applyDepartureNudge(timeStr) {
+      const depInput = document.getElementById('depTimeInput');
+      if (depInput) {
+        depInput.value = timeStr;
+        searchRoutes();
+      }
+    }
+
     function renderItineraries(data) {
       const container = document.getElementById('resultsContainer');
       const itins = data.itineraries || [];
@@ -544,7 +552,33 @@
         return;
       }
 
+      let nudgeHtml = '';
+      if (data.departure_nudge) {
+        const nudge = data.departure_nudge;
+        nudgeHtml = `
+          <div onclick="applyDepartureNudge('${nudge.recommended_time}')"
+               class="cursor-pointer bg-gradient-to-r from-amber-50 via-emerald-50 to-teal-50 border border-emerald-300 rounded-2xl p-3 shadow-xs hover:shadow-md transition-all flex items-center justify-between group mb-3">
+            <div class="flex items-center space-x-2.5">
+              <span class="text-xl">💡</span>
+              <div class="text-xs">
+                <div class="font-bold text-emerald-950 flex items-center space-x-1.5">
+                  <span>Smart Departure Nudge</span>
+                  <span class="bg-emerald-200 text-emerald-900 text-[10px] px-2 py-0.5 rounded-full font-extrabold">-${nudge.crowding_drop_pct}% Crowding</span>
+                </div>
+                <div class="text-slate-600 mt-0.5">
+                  Leaving <strong>${escapeHtml(nudge.shift_label)} (${escapeHtml(nudge.recommended_time)})</strong> reduces crowding to <strong>${(nudge.new_avg_crowding * 100).toFixed(0)}%</strong>.
+                </div>
+              </div>
+            </div>
+            <button class="text-[11px] font-bold text-emerald-700 bg-white group-hover:bg-emerald-600 group-hover:text-white px-2.5 py-1.5 rounded-xl border border-emerald-300 shadow-xs transition-all whitespace-nowrap ml-2">
+              Apply Shift →
+            </button>
+          </div>
+        `;
+      }
+
       let html = `
+        ${nudgeHtml}
         <div class="flex items-center justify-between text-xs text-slate-500 pb-1">
           <span>Found <strong>${itins.length}</strong> Pareto Itineraries</span>
           <span>Latency: <strong class="text-emerald-600">${data.query_latency_ms} ms</strong></span>
@@ -559,6 +593,11 @@
         const busLegs = itin.legs.filter(l => l.mode === 'BUS');
         const isAC = busLegs.some(l => l.is_ac);
 
+        const riskBadge = itin.boarding_risk === 'High' ?
+          `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">⚠️ Crush Load • Miss-Bus Risk</span>` :
+          (itin.boarding_risk === 'Moderate' ?
+          `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Moderate Load</span>` : '');
+
         // Crowding Strip HTML
         const allSegments = [];
         busLegs.forEach(l => l.segments.forEach(s => allSegments.push(s)));
@@ -572,9 +611,12 @@
                class="p-4 bg-white border border-slate-200 hover:border-emerald-400 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer space-y-3">
             
             <div class="flex items-center justify-between">
-              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${badgeColor}">
-                ${escapeHtml(itin.label)}
-              </span>
+              <div class="flex items-center space-x-1.5 flex-wrap">
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${badgeColor}">
+                  ${escapeHtml(itin.label)}
+                </span>
+                ${riskBadge}
+              </div>
               <div class="flex items-center space-x-1.5 text-xs font-semibold text-slate-800">
                 <span class="text-emerald-700 font-extrabold text-sm">₹${itin.estimated_fare_inr}</span>
                 <span class="text-slate-300">•</span>
@@ -592,6 +634,7 @@
               </div>
               <div class="flex items-center space-x-3 text-xs text-slate-500 mt-1">
                 <span>⏱️ <strong>${itin.total_duration_min}</strong> min</span>
+                <span>⏳ Wait: ~<strong>${itin.est_wait_min || itin.wait_duration_min || 3}</strong> min</span>
                 <span>🚶 Walk: ${itin.walk_duration_min} min</span>
                 <span>🔄 Transfers: ${itin.transfers}</span>
               </div>
@@ -677,8 +720,9 @@
             poly.bindPopup(`
               <div class="text-xs space-y-1 p-1">
                 <div class="font-bold text-slate-900">${escapeHtml(seg.from_stop_name)} → ${escapeHtml(seg.to_stop_name)}</div>
-                <div class="text-slate-600">Route: <strong>${escapeHtml(leg.route_short_name)}</strong> (${leg.is_ac ? 'AC' : 'Non-AC'})</div>
+                <div class="text-slate-600">Route: <strong>${escapeHtml(leg.route_short_name)}</strong> (${leg.is_ac ? 'AC' : 'Non-AC'})${leg.headway_min ? ` • Headway: ${leg.headway_min}m` : ''}</div>
                 <div class="text-slate-600">Crowding Load: <strong style="color:${col}">${(seg.crowding_score * 100).toFixed(0)}% (${seg.crowding_tier})</strong></div>
+                ${leg.boarding_risk && leg.boarding_risk !== 'Low' ? `<div class="text-[11px] font-semibold ${leg.boarding_risk === 'High' ? 'text-rose-600' : 'text-amber-600'}">Boarding Risk: ${leg.boarding_risk} (${(leg.boarding_denial_prob*100).toFixed(0)}% miss-bus risk)</div>` : ''}
                 <div class="text-slate-400 text-[10px]">Segment Time: ${seg.duration_sec}s</div>
               </div>
             `);

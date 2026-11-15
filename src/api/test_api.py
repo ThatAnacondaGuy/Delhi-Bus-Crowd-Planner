@@ -83,6 +83,9 @@ def test_plan_journey_peak_balanced(client):
     assert "transfers" in itin
     assert "estimated_fare_inr" in itin
     assert "avg_crowding_score" in itin
+    assert "est_wait_min" in itin
+    assert "boarding_risk" in itin
+    assert "departure_nudge" in data
     assert "legs" in itin
     assert len(itin["legs"]) > 0
 
@@ -91,6 +94,8 @@ def test_plan_journey_peak_balanced(client):
     first_bus = bus_legs[0]
     assert "route_short_name" in first_bus
     assert "segments" in first_bus
+    assert "est_wait_min" in first_bus
+    assert "boarding_risk" in first_bus
 
 def test_plan_journey_offpeak_least_crowded(client):
     """Test 6: POST /api/plan evaluates off-peak least crowded journey with high beta."""

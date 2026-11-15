@@ -209,7 +209,9 @@ def search_stops(
 def plan_journey_endpoint(req: PlanRequest):
     """
     Computes multi-criteria Pareto-optimal itineraries between origin and destination:
-    Returns ranked itineraries (Fastest, Balanced, Least Crowded) with latency in ms.
+    - Incorporates empirical headway wait time and left-behind risk (>80% crush load).
+    - Returns ranked Pareto itineraries with latency in ms.
+    - Evaluates smart +/-15 minute departure shifts and attaches `departure_nudge` if crowding is reduced by >= 15%.
     """
     router = getattr(app.state, "router", None) or get_router()
     t_start = time.time()
