@@ -76,9 +76,15 @@ The team wants something that would survive real Delhi use, so the design is hon
 - DTC 25.6 lakh/day and cluster 15.3 lakh/day in FY2024-25. DTC was 24.3 lakh/day in FY2025-26.
 - These include all riders. Sources and years go in `config.py`.
 
-**GPS** (`delhi-dtc-bus-gtfs-rt-2026-10.7z`)
-- 16.1 GB, downloading to `data/raw/gps/` (10.9 GB at 23:42 on 17 Nov, resuming after drops). A 7z lists its files at the end, so nothing is usable until it completes.
-- 31 daily SQLite files with one table `vehicle_feed`, DTC buses only. `vehicle_id` uses the same format as ticket `vehicle_number`.
+**GPS** (`delhi-dtc-bus-gtfs-rt-2026-10.7z`, in `data/raw/gps/`)
+- Downloaded on 17 Nov; the SHA-256 matches the published checksum.
+- The archive is not solid: the 31 daily SQLite files (3.4–4.8 GB each, 124 GB unpacked) can be extracted one at a time. One table, `vehicle_feed`.
+- Checked on one weekday (15 Oct):
+  - 29.3M pings, about 12 s apart per bus; 6,093 buses
+  - 99.9% of pings carry a GTFS route_id; 2,113 of 2,574 routes appear
+  - a quarter of pings are on cluster-labelled routes
+  - 97.8% of the buses on that day's linked tickets appear in the feed, carrying 99% of linked passengers on both DTC and cluster routes
+- So despite the README's "DTC buses only", the feed covers practically the whole fleet, and `vehicle_id` matches ticket `vehicle_number`.
 
 **Environment and team**
 - The venv is incomplete, old artifacts sit in `data/processed_/`, and `.gitignore` misses parquet, pkl, geojson and 7z.
@@ -88,7 +94,7 @@ The team wants something that would survive real Delhi use, so the design is hon
 ## 4. Approaches
 
 1. **Tickets + schedule only.** Low risk. Weakness: buses that ran and run times are guesses.
-2. **Same, plus a GPS reality check (chosen by the team).** Hard cut-off at the end of 20 Nov. v2 makes the GPS optional on the critical path: run times now come from ticket pairs for every route, and GPS becomes the DTC cross-check and the source of "trips that ran".
+2. **Same, plus a GPS reality check (chosen by the team).** Hard cut-off at the end of 20 Nov. v2 makes the GPS optional on the critical path: run times now come from ticket pairs for every route, and GPS becomes the cross-check and the source of "trips that ran" for every route it covers (practically all; see section 3).
 3. Dropped:
    - OpenTripPlanner: days of setup on the part that is not judged.
    - Relative-only levels: the brief asks for seats / standing / crowded.
@@ -133,7 +139,7 @@ The team wants something that would survive real Delhi use, so the design is hon
 - **Clock.** GTFS template time × run-time factor, with run times attached to the to-stop (fixes the one-stop shift). Factors come from same-bus ticket pairs that move forward and are at least 10 scheduled minutes apart:
   - per operator × hour
   - per route group × hour where there are 30 or more pairs
-  - GPS cross-checks DTC routes
+  - GPS cross-checks every route it covers
 
   The same clock is used for riders and for bus passing times.
 - **Bus passing times:** scheduled buses passing each stop, on the corrected clock.
@@ -143,9 +149,12 @@ The team wants something that would survive real Delhi use, so the design is hon
   - a hand-made alias table for about 30 hubs (CP / Rajiv Chowk, ISBT Anand Vihar, Kashmere Gate, Sarai Kale Khan, AIIMS, ITO, Nehru Place, Dhaula Kuan…) in English and Hinglish forms
 - **Shapes:** a road-following slice per segment, with its generator script, plus distances along the shape.
 
-### 5.5 GPS layer (time-boxed, DTC only, off the critical path)
+### 5.5 GPS layer (time-boxed, off the critical path)
 
-- **Checkpoint 19 Nov 12:00:** archive complete, `7z t` passed, solid-block layout checked (if solid, extract all sample days in one pass), one day extracted, and GPS route_id matches GTFS ≥ 90% (or a working trip map). Otherwise stop GPS work. Builder time before the checkpoint is capped at about 4 h; extraction runs as background scripts.
+- **Checkpoint 19 Nov 12:00.**
+  - Already passed on 17 Nov: archive complete and checksum verified, archive not solid, one day extracted, route ids match (99.9%).
+  - Still due by the checkpoint: the trip definition below working on one day, and ρ for that day. Otherwise stop GPS work.
+  - Builder time before the checkpoint is capped at about 4 h. Extraction runs as background scripts, one day at a time, and each day is deleted after aggregation.
 - **Scope:**
   1. **Trips that ran.**
      - A trip counts only if one vehicle passes at least 80% of the canonical stops in order.
@@ -336,7 +345,7 @@ A frozen `/v1/plan` example JSON is committed on 19 Nov so the screens can be bu
 - **Corridor map with a time slider** (from the corridor layer).
 - **Route heat strip:** stretches × windows, as the drill-down.
 - **Heatmap** of the top 50 route-directions, with operator and corridor filters.
-- **Flags:** scaled to capacity, low app use, full (censored), schedule mismatch. For cluster routes, "buses that ran" = app-linked vehicles seen (a lower bound).
+- **Flags:** scaled to capacity, low app use, full (censored), schedule mismatch. "Buses that ran" come from GPS where coverage is 0.8 or more; elsewhere they are the app-linked vehicles seen (a lower bound), marked as such.
 - **Export:** CSV.
 
 ### 5.13 Engineering
@@ -426,7 +435,7 @@ A frozen `/v1/plan` example JSON is committed on 19 Nov so the screens can be bu
 ## 7. Risks and fallbacks
 
 - **Scale still off for some routes:** the field count measures it. Ranges and evidence states carry it to users, and the note stresses that comparisons are firmer than absolute counts.
-- **GPS late or ids unmatched:** 19 Nov checkpoint and 20 Nov cut-off. The ticket clock already covers every route.
+- **GPS trip definition fails:** the archive and route ids already passed; the 19 Nov checkpoint and 20 Nov cut-off still apply. The ticket clock already covers every route.
 - **Field count not possible:** report repeatability only and say so.
 - **Thin data on demo journeys:** demo journeys are chosen on 18 Nov from the evidence table. The preset is kept even if it shows no trade-off.
 - **Overrun:** the thin version must be running on 19 Nov; then the cut list.
