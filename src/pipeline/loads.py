@@ -1,4 +1,4 @@
-"""Stage 4 (riders part): app riders on every route stretch at on-board time, with the terminal
+"""Stage 4: app riders on every route stretch at on-board time, with the terminal
 alighting correction.
 
 Each resolved ticket is placed on the stretches between its boarding and alighting stops. Stretch k
@@ -8,12 +8,19 @@ they start there (people buy near the end of a ride), so terminal alightings are
 route's terminal boardings times the intermediate-stop ratio (ruling R11) and the excess is spread over
 earlier stops of the same fare slab in proportion to the reverse direction's boardings.
 """
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from .config import ALIGHTING_MIN_REVERSE_BOARD, EXCLUDED_DATES, EXCLUDED_WINDOWS
+from .clean import excluded
+from .config import (ALIGHTING_LAST_STRETCHES, ALIGHTING_MIN_REVERSE_BOARD, BOUND_MIN_TICKETS, BOUND_PERCENTILE,
+                     CORRIDOR_SIMPLIFY_M, EXCLUDED_DATES, EXCLUDED_WINDOWS, LOW_APP_USE_FRACTION,
+                     NO_DATA_PERCENTILE, PLANNER_TABLES, PUBLISHED_RIDERSHIP, S0_MAX_SHARE, SCALE_RANGE,
+                     SEATS_FRACTION, SUPPLY_WIDEN_MIN, WINDOWS)
 from .errors import GateError
 from .network import Clock
 
@@ -347,3 +354,540 @@ def run_riders(con, paths=None, correct_alighting: bool = True, **_) -> RiderSta
                        gate_dev=dev)
     print(f"loads: {stats}")
     return stats
+
+
+# =================================================================== levels (Task 10, design 5.6 steps 3-8)
+
+@dataclass
+class LevelStats:
+    rows: int
+    e_op: dict
+    e_star: dict
+    capped_routes: int
+    infeasible: list
+    s0_widened_share: float
+    s0_mismatch_share: float
+    dropped_rider_share: float
+    no_data_routes: int
+    bands: pd.DataFrame = field(default_factory=pd.DataFrame, repr=False)
+    sizes: dict = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        e = ", ".join(f"E_{k} {v:.2f}" for k, v in self.e_op.items())
+        st = ", ".join(f"E*_{k} {v:.2f}" for k, v in self.e_star.items())
+        return (f"{self.rows:,} stretch_crowding rows; {e} (before water-filling); {st}; {self.capped_routes} routes "
+                f"scaled to capacity; S=0 widened {self.s0_widened_share:.3%} / schedule mismatch "
+                f"{self.s0_mismatch_share:.3%} of rider volume; {self.no_data_routes} no-data routes")
+
+
+# ---------------------------------------------------------------- pure functions
+
+def _level_v(mid, seats, rated):
+    mid = np.asarray(mid, dtype=float)
+    return np.where(mid < SEATS_FRACTION * seats, "seats", np.where(mid <= rated, "standing", "crowded"))
+
+
+def level(people_mid: float, spec) -> str:
+    """seats if L < 0.7 x seats; standing up to the rated total; crowded above it."""
+    return str(_level_v(people_mid, spec.seats, spec.rated_total))
+
+
+def evidence(low: float, high: float, spec, flags, route_no_data: bool) -> str:
+    """none for no-data routes; rough when low app use flags it, when the range spans two levels, or when even
+    the upper end stays under the seats threshold (a quiet count is only a rough guess); else many_tickets."""
+    if route_no_data:
+        return "none"
+    if "low_app_use" in flags:
+        return "rough"
+    lo, hi = level(low, spec), level(high, spec)
+    return "rough" if lo != hi or hi == "seats" else "many_tickets"
+
+
+def cap_to_crush(people: float, spec) -> tuple[float, bool]:
+    """Displayed people on board never exceed the crush load; the second value says it was capped (flag full)."""
+    return (float(spec.crush), True) if people > spec.crush else (float(people), False)
+
+
+def sampling_se(daily) -> float:
+    """Standard error of a cell's mean: sample SD of its daily values (zero days included) / sqrt(days)."""
+    v = np.asarray(daily, dtype=float)
+    return float(v.std(ddof=1) / np.sqrt(len(v))) if len(v) > 1 else 0.0
+
+
+def waterfill(app_by_route: dict, bound_by_route: dict, total: float) -> tuple[float, dict]:
+    """Operator scale E* with per-route capacity bounds: E_r = min(E*, B_r) and sum(app_r x E_r) = total.
+    Routes without a bound are absent from bound_by_route (or inf). If even all-capped cannot reach the total
+    E* is the largest bound (every bounded route capped). Returns (E*, E_r)."""
+    inf = float("inf")
+    items = sorted(((bound_by_route.get(r, inf), r, a) for r, a in app_by_route.items() if a > 0),
+                   key=lambda t: (t[0], str(t[1])))
+    remaining, weight, e = float(total), sum(a for _, _, a in items), 0.0
+    for b, _, a in items:
+        e = remaining / weight if weight > 0 else 0.0
+        if e <= b:
+            break
+        remaining -= a * b
+        weight -= a
+    else:
+        if items:
+            e = max(b for b, _, _ in items if b < inf) if any(b < inf for b, _, _ in items) else e
+    return e, {r: min(e, bound_by_route.get(r, inf)) for r in app_by_route}
+
+
+# ---------------------------------------------------------------- helpers
+
+def _windows(fn) -> str:
+    """UNION ALL of fn(dt, step, half, wide_half, last_j) over the two day types."""
+    parts = []
+    for dt, w in WINDOWS.items():
+        half = w.base_min // 2
+        parts.append(fn(dt, w.step_min, half, half + SUPPLY_WIDEN_MIN, (1440 - 1) // w.step_min))
+    return " UNION ALL ".join(parts)
+
+
+def _unnest_windows(col: str, step: int, half: int, last_j: int) -> str:
+    """SQL list of window indexes j (window label j*step) whose base [j*step-half, j*step+half) holds `col`."""
+    return (f"unnest(range(greatest(0, CAST(floor(({col} - {half}) / {step}.0) AS BIGINT) + 1), "
+            f"least(CAST(floor(({col} + {half}) / {step}.0) AS BIGINT), {last_j}) + 1))")
+
+
+def effective_days(con) -> pd.DataFrame:
+    """(day_type, w, n_days): clean days per window, a day counting by the share of the base window that is
+    not excluded (R8 half-open windows; equals the plain clean-day count when no window is cut)."""
+    days = con.execute("SELECT date, day_type FROM clean_days WHERE NOT is_excluded_date").fetchall()
+    rows = []
+    for dt, spec in WINDOWS.items():
+        half = spec.base_min // 2
+        ds = [d for d, t in days if t == dt]
+        for w in range(0, 1440, spec.step_min):
+            lo, hi = max(0, w - half), min(1440, w + half)
+            tot = 0.0
+            for d in ds:
+                base = datetime(d.year, d.month, d.day)
+                tot += 1 - sum(excluded(base + timedelta(minutes=m)) for m in range(lo, hi)) / (hi - lo)
+            rows.append((dt, w, tot))
+    return pd.DataFrame(rows, columns=["day_type", "w", "n_days"])
+
+
+def clean_day_totals(con) -> dict[str, float]:
+    """Effective clean days per day type over the whole day: each non-excluded date counts by the share of its
+    minutes outside the excluded windows (a day inside an excluded window counts 0)."""
+    out: dict[str, float] = {}
+    for d, dt in con.execute("SELECT date, day_type FROM clean_days WHERE NOT is_excluded_date").fetchall():
+        base = datetime(d.year, d.month, d.day)
+        out[dt] = out.get(dt, 0.0) + 1 - sum(excluded(base + timedelta(minutes=m)) for m in range(1440)) / 1440
+    return out
+
+
+def _register(con, name: str, df: pd.DataFrame) -> None:
+    con.register("_df", df)
+    con.execute(f"CREATE OR REPLACE TEMP TABLE {name} AS SELECT * FROM _df")
+    con.unregister("_df")
+
+
+def _eligible(con) -> None:
+    """Routes that carry supply per day type (R6): regular always, office_special on weekdays only; school and
+    daf routes never. passings itself is not filtered."""
+    con.execute("""
+        CREATE OR REPLACE TEMP TABLE _elig AS
+        SELECT m.route_id, d.day_type, s."class" = 'office_special' AS office
+        FROM route_meta m JOIN service_class s USING (route_id)
+        CROSS JOIN (VALUES ('weekday'), ('weekend')) d(day_type)
+        WHERE s."class" = 'regular' OR (s."class" = 'office_special' AND d.day_type = 'weekday')""")
+    # stretch k = stop k to k+1; the bus is on it at its passing of stop k
+    con.execute("""
+        CREATE OR REPLACE TEMP TABLE _pm AS
+        SELECT p.route_id, p.seq, p.minute % 1440 AS m
+        FROM passings p JOIN route_meta r USING (route_id)
+        WHERE p.seq <= r.n_stops - 1 AND p.route_id IN (SELECT route_id FROM _elig)""")
+    con.execute("""
+        CREATE OR REPLACE TEMP TABLE _pair AS
+        SELECT a.route_id, a.seq, a.stop_id AS from_stop_id, b.stop_id AS to_stop_id,
+               a.stop_name AS from_name, b.stop_name AS to_name
+        FROM canonical_stops a JOIN canonical_stops b ON a.route_id = b.route_id AND b.seq = a.seq + 1""")
+
+
+def _supply(con) -> None:
+    """_sup(route_id, seq, day_type, w, s_base, s_wide): scheduled buses at stop k in the base window and in
+    the base widened by SUPPLY_WIDEN_MIN each side; _rh: the route-hour fallback."""
+    con.execute("CREATE OR REPLACE TEMP TABLE _sup AS " + _windows(lambda dt, step, half, wh, last_j: f"""
+        SELECT route_id, seq, '{dt}' AS day_type, j * {step} AS w, count(*)::INT AS s_wide,
+               (count(*) FILTER (WHERE m >= j * {step} - {half} AND m < j * {step} + {half}))::INT AS s_base
+        FROM (SELECT p.route_id, p.seq, p.m, {_unnest_windows('p.m', step, wh, last_j)} AS j
+              FROM _pm p JOIN _elig e ON e.route_id = p.route_id AND e.day_type = '{dt}')
+        GROUP BY route_id, seq, j"""))
+    con.execute("""
+        CREATE OR REPLACE TEMP TABLE _rh AS
+        SELECT route_id, h, max(c)::INT AS rh
+        FROM (SELECT route_id, seq, m // 60 AS h, count(*) AS c FROM _pm GROUP BY ALL) GROUP BY route_id, h""")
+
+
+def _rider_cells(con) -> None:
+    """_ry: per (route, stretch, day type, window) the sum over clean days of daily rider counts and of their
+    squares (days without riders contribute zero), plus tickets."""
+    con.execute("CREATE OR REPLACE TEMP TABLE _ry AS " + _windows(lambda dt, step, half, wh, last_j: f"""
+        SELECT route_id, seq, '{dt}' AS day_type, j * {step} AS w, sum(y) AS sum_y, sum(y * y) AS sum_y2,
+               sum(t)::BIGINT AS tickets
+        FROM (SELECT route_id, seq, date, j, sum(pax) AS y, sum(tickets) AS t
+              FROM (SELECT s.route_id, s.seq, s.date, s.pax, s.tickets,
+                           {_unnest_windows('s.minute', step, half, last_j)} AS j
+                    FROM stretch_riders s JOIN _elig e ON e.route_id = s.route_id AND e.day_type = s.day_type
+                    WHERE s.day_type = '{dt}')
+              GROUP BY route_id, seq, date, j)
+        GROUP BY route_id, seq, j"""))
+
+
+def _gps_rho(con) -> bool:
+    """Task 13's gps_route_hour(route_id, hour, rho), if it exists; otherwise rho = 1."""
+    if not _has(con, "gps_route_hour"):
+        return False
+    cols = {r[0] for r in con.execute("DESCRIBE gps_route_hour").fetchall()}
+    return {"route_id", "hour", "rho"} <= cols
+
+
+def _cells(con, nd: pd.DataFrame) -> None:
+    """_cell: one row per (route, stretch, day type, window) with riders or scheduled buses, the supply tier
+    that applied (4: schedule, widened +-30, route-hour, none), and l = riders per bus."""
+    _register(con, "_nd", nd)
+    rho = _gps_rho(con)
+    con.execute(f"""
+        CREATE OR REPLACE TEMP TABLE _cell AS
+        WITH j AS (
+            SELECT route_id, seq, day_type, w, coalesce(y.sum_y, 0) AS sum_y, coalesce(y.sum_y2, 0) AS sum_y2,
+                   coalesce(y.tickets, 0) AS tickets, coalesce(s.s_base, 0) AS s_base, coalesce(s.s_wide, 0) AS s_wide
+            FROM _ry y FULL OUTER JOIN _sup s USING (route_id, seq, day_type, w)),
+        k AS (
+            SELECT j.*, n.n_days, coalesce(h.rh, 0) AS rh, {'coalesce(g.rho, 1.0)' if rho else '1.0'} AS rho,
+                   {'g.rho IS NOT NULL' if rho else 'false'} AS has_gps
+            FROM j JOIN _pair USING (route_id, seq)
+            JOIN _nd n ON n.day_type = j.day_type AND n.w = j.w
+            LEFT JOIN _rh h ON h.route_id = j.route_id AND h.h = j.w // 60
+            {"LEFT JOIN gps_route_hour g ON g.route_id = j.route_id AND g.hour = j.w // 60" if rho else ""}
+            WHERE n.n_days > 0),
+        t AS (
+            SELECT k.*, CASE WHEN s_base > 0 THEN s_base WHEN sum_y > 0 AND s_wide > 0 THEN s_wide
+                             WHEN sum_y > 0 AND rh > 0 THEN rh END AS s_raw,
+                   CASE WHEN s_base > 0 THEN CASE WHEN has_gps THEN 'gps' ELSE 'schedule' END
+                        WHEN sum_y > 0 AND (s_wide > 0 OR rh > 0) THEN 'widened'
+                        WHEN sum_y > 0 THEN 'none' END AS src
+            FROM k)
+        SELECT route_id, seq, day_type, w, sum_y, sum_y2, tickets, n_days, src, s_raw * rho AS s,
+               sum_y / n_days AS y_day,
+               CASE WHEN s_raw > 0 THEN sum_y / n_days / (s_raw * rho) END AS l,
+               CASE WHEN s_raw > 0 AND n_days > 1
+                    THEN sqrt(greatest((sum_y2 - sum_y * sum_y / n_days) / (n_days - 1), 0)) / sqrt(n_days)
+                         / (s_raw * rho) ELSE 0.0 END AS se_l
+        FROM t WHERE src IS NOT NULL""")
+
+
+def _route_level(con, n_clean: int) -> None:
+    """_app(route_id, operator, app): resolved passengers per clean day; _rnd: the no-data rule."""
+    ex = _excluded_sql("CAST(timezone('Asia/Kolkata', t.ts) AS TIMESTAMP)", "t.date")
+    con.execute(f"""
+        CREATE OR REPLACE TEMP TABLE _app AS
+        SELECT m.route_id, m.operator, coalesce(a.pax, 0) / {n_clean} AS app
+        FROM route_meta m LEFT JOIN (SELECT t.route_id, sum(t.pax) AS pax FROM tickets_resolved t
+                                     WHERE NOT {ex} GROUP BY 1) a USING (route_id)""")
+    con.execute("""
+        CREATE OR REPLACE TEMP TABLE _rnd AS
+        WITH tr AS (SELECT route_id, count(*) AS trips FROM _pm WHERE seq = 1 GROUP BY 1),
+        r AS (SELECT a.route_id, a.app / tr.trips AS per_trip FROM _app a JOIN tr USING (route_id))
+        SELECT route_id, per_trip, per_trip <= 0 OR per_trip < (SELECT quantile_cont(per_trip, ?) FROM r) AS no_data
+        FROM r""", [NO_DATA_PERCENTILE])
+
+
+def _low_app_use(con, nday: dict) -> None:
+    """_low(route_id, seq, day_type): app riders per scheduled bus on a stop pair served by >= 2 routes
+    below a third of the pair's median across routes that sell tickets."""
+    _register(con, "_nday", pd.DataFrame(list(nday.items()), columns=["day_type", "n"]))
+    con.execute(f"""
+        CREATE OR REPLACE TEMP TABLE _low AS
+        WITH y AS (SELECT s.route_id, s.seq, s.day_type, sum(s.pax) / any_value(n.n) AS y
+                   FROM stretch_riders s JOIN _nday n USING (day_type) GROUP BY ALL),
+        sd AS (SELECT p.route_id, p.seq, e.day_type, count(*) AS s_day
+               FROM _pm p JOIN _elig e USING (route_id) GROUP BY ALL),
+        rt AS (SELECT sd.route_id, sd.seq, sd.day_type, pr.from_stop_id, pr.to_stop_id,
+                      coalesce(y.y, 0) / sd.s_day AS rate
+               FROM sd JOIN _pair pr USING (route_id, seq) LEFT JOIN y USING (route_id, seq, day_type)
+               JOIN _rnd r USING (route_id) WHERE NOT r.no_data),
+        md AS (SELECT from_stop_id, to_stop_id, day_type, median(rate) AS med, count(*) AS n FROM rt GROUP BY ALL)
+        SELECT rt.route_id, rt.seq, rt.day_type FROM rt JOIN md USING (from_stop_id, to_stop_id, day_type)
+        WHERE md.n >= 2 AND rt.rate < md.med * {LOW_APP_USE_FRACTION}""")
+
+
+def _scale(con, cells: str = "_cell") -> tuple[dict, dict, dict, set, list]:
+    """Per operator: E_op, the capacity bounds, the water-filled E*; fills _er(route_id, e_r, bound, capped)."""
+    bounds = dict(con.execute(f"""
+        SELECT c.route_id, s.crush / quantile_cont(c.l, {BOUND_PERCENTILE}) AS b
+        FROM {cells} c JOIN route_specs s USING (route_id)
+        WHERE c.day_type = 'weekday' AND c.tickets >= {BOUND_MIN_TICKETS} AND c.l > 0
+        GROUP BY c.route_id, s.crush HAVING quantile_cont(c.l, {BOUND_PERCENTILE}) > 0""").fetchall())
+    app = con.execute("SELECT route_id, operator, app FROM _app").fetchall()
+    e_op, e_star, er, capped, infeasible = {}, {}, {}, set(), []
+    for op, src in PUBLISHED_RIDERSHIP.items():
+        by = {r: a for r, o, a in app if o == op}
+        tot = sum(by.values())
+        if tot <= 0:
+            continue
+        e_op[op] = src.value / tot
+        e, e_r = waterfill(by, bounds, src.value)
+        e_star[op] = e
+        er.update(e_r)
+        got = sum(by[r] * e_r[r] for r in by)
+        if abs(got / src.value - 1) > 1e-6:
+            infeasible.append(op)
+            capped |= {r for r in by if r in bounds and by[r] > 0}
+        else:
+            capped |= {r for r in by if r in bounds and by[r] > 0 and bounds[r] < e}
+    rows = [(r, er.get(r), bounds.get(r), r in capped) for r, _, _ in app]
+    _register(con, "_er", pd.DataFrame(rows, columns=["route_id", "e_r", "bound", "capped"]).astype(
+        {"route_id": "int64", "e_r": "float64", "bound": "float64", "capped": "bool"}))
+    return e_op, e_star, bounds, capped, infeasible
+
+
+def _durations(con, clock: Clock) -> None:
+    """_dur(route_id, seq, hour, dur_min): corrected run time of stretch k at that hour."""
+    rows = []
+    for rid, n in con.execute("SELECT route_id, n_stops FROM route_meta").fetchall():
+        fac = np.array(clock.hour_factors(rid))
+        for seq in range(1, n):
+            t = clock.template(rid, seq + 1) / 60.0
+            rows.append(pd.DataFrame({"route_id": rid, "seq": seq, "hour": np.arange(24), "dur_min": t * fac}))
+    df = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(
+        {"route_id": [], "seq": [], "hour": [], "dur_min": []})
+    _register(con, "_dur", df.astype({"route_id": "int64", "seq": "int32", "hour": "int32"}))
+
+
+# ---------------------------------------------------------------- final table
+
+def _build_crowding(con) -> None:
+    lo, hi = SCALE_RANGE
+    con.execute(f"""
+        CREATE OR REPLACE TABLE stretch_crowding AS
+        WITH base AS (
+            SELECT m.route_id, m.short_name, m.operator, m.direction, c.seq, p.from_stop_id, p.to_stop_id,
+                   p.from_name, p.to_name, c.day_type, c.w::INT AS window_start_min,
+                   c.y_day AS app_riders, c.tickets, c.s AS buses, c.src AS bus_source,
+                   b.share_9m, sp.seats, sp.rated_total, sp.crush, er.e_r, er.bound, er.capped,
+                   c.l, c.se_l, m.n_stops,
+                   coalesce(r.no_data, true) AS route_no_data,
+                   (c.src = 'none') AS mismatch,
+                   (lw.route_id IS NOT NULL) AS low_use,
+                   coalesce(ta.alighting_sensitive, false) AS alight,
+                   (e.office AND c.day_type = 'weekday') AS office
+            FROM _cell c JOIN route_meta m USING (route_id) JOIN _pair p USING (route_id, seq)
+            JOIN bus_mix b USING (route_id) JOIN route_specs sp USING (route_id)
+            JOIN _er er USING (route_id) LEFT JOIN _rnd r USING (route_id)
+            JOIN _elig e ON e.route_id = c.route_id AND e.day_type = c.day_type
+            LEFT JOIN _low lw ON lw.route_id = c.route_id AND lw.seq = c.seq AND lw.day_type = c.day_type
+            LEFT JOIN terminal_asymmetry ta ON ta.route_id = c.route_id),
+        est AS (
+            SELECT *, (route_no_data OR mismatch OR e_r IS NULL) AS nd,
+                   e_r * l AS mid_raw,
+                   {lo} * e_r * greatest(l - se_l, 0) AS low_raw,
+                   greatest(e_r, least({hi} * e_r, coalesce(bound, 1e18))) * (l + se_l) AS high_raw
+            FROM base),
+        lvl AS (
+            SELECT *, CASE WHEN nd THEN 'no_data' WHEN mid_raw < {SEATS_FRACTION} * seats THEN 'seats'
+                           WHEN mid_raw <= rated_total THEN 'standing' ELSE 'crowded' END AS level,
+                   CASE WHEN nd THEN 'none' WHEN low_use THEN 'rough'
+                        WHEN (CASE WHEN low_raw < {SEATS_FRACTION} * seats THEN 'a' WHEN low_raw <= rated_total
+                                   THEN 'b' ELSE 'c' END)
+                             <> (CASE WHEN high_raw < {SEATS_FRACTION} * seats THEN 'a' WHEN high_raw <= rated_total
+                                      THEN 'b' ELSE 'c' END)
+                             OR high_raw < {SEATS_FRACTION} * seats THEN 'rough' ELSE 'many_tickets' END AS ev0
+            FROM est)
+        SELECT route_id, short_name, operator, direction, seq, from_stop_id, to_stop_id, from_name, to_name,
+               day_type, window_start_min, round(app_riders, 4) AS app_riders, tickets::INT AS tickets,
+               round(buses, 3) AS buses, bus_source, share_9m, seats, rated_total, crush, e_r AS "E_r",
+               CASE WHEN nd THEN NULL ELSE round(least(mid_raw, crush), 3) END AS people_mid,
+               CASE WHEN nd THEN NULL ELSE round(least(low_raw, crush), 3) END AS people_low,
+               CASE WHEN nd THEN NULL ELSE round(least(high_raw, crush), 3) END AS people_high,
+               level,
+               CASE WHEN ev0 = 'many_tickets' AND alight AND seq >= n_stops - 1 - {ALIGHTING_LAST_STRETCHES} + 1
+                    THEN 'rough' ELSE ev0 END AS evidence,
+               concat_ws(',', CASE WHEN NOT nd AND mid_raw > crush THEN 'full' END,
+                              CASE WHEN capped THEN 'scaled_to_capacity' END,
+                              CASE WHEN low_use THEN 'low_app_use' END,
+                              CASE WHEN mismatch THEN 'schedule_mismatch' END,
+                              CASE WHEN alight THEN 'alighting_sensitive' END,
+                              CASE WHEN office THEN 'office_special' END) AS flags
+        FROM lvl ORDER BY route_id, day_type, seq, window_start_min""")
+
+
+# ---------------------------------------------------------------- outputs
+
+def _simplify(coords: list, tol_m: float) -> list:
+    """Douglas-Peucker on [lat, lon] points (local metres); returns GeoJSON [lon, lat] rounded to 5 decimals."""
+    pts = np.array(coords, dtype=float)
+    if len(pts) <= 2:
+        keep = np.arange(len(pts))
+    else:
+        xy = (pts - pts[0]) * np.array([111_320.0, 111_320.0 * np.cos(np.radians(pts[:, 0].mean()))])
+        keep_m = np.zeros(len(pts), bool)
+        keep_m[[0, -1]] = True
+        stack = [(0, len(pts) - 1)]
+        while stack:
+            i, j = stack.pop()
+            if j <= i + 1:
+                continue
+            d = xy[j] - xy[i]
+            n = np.hypot(*d)
+            seg = xy[i + 1:j] - xy[i]
+            dist = np.hypot(*seg.T) if n == 0 else np.abs(d[0] * seg[:, 1] - d[1] * seg[:, 0]) / n
+            k = int(np.argmax(dist))
+            if dist[k] > tol_m:
+                keep_m[i + 1 + k] = True
+                stack += [(i, i + 1 + k), (i + 1 + k, j)]
+        keep = np.flatnonzero(keep_m)
+    return [[round(float(pts[i, 1]), 5), round(float(pts[i, 0]), 5)] for i in keep]
+
+
+def _corridor(con, paths, clock: Clock) -> int:
+    _durations(con, clock)
+    con.execute("""
+        CREATE OR REPLACE TABLE corridor_values AS
+        SELECT from_stop_id || '-' || to_stop_id AS pair_id, any_value(from_stop_id) AS from_stop_id,
+               any_value(to_stop_id) AS to_stop_id, c.day_type, c.window_start_min,
+               round(sum(c.buses * c.people_mid) / sum(c.buses * c.rated_total), 4) AS load_ratio,
+               round(sum(c.buses) FILTER (WHERE c.level = 'crowded') / sum(c.buses), 4) AS share_crowded,
+               round(sum(c.buses * c.people_mid * d.dur_min) FILTER (WHERE c.level = 'crowded')
+                     * CASE WHEN c.day_type = 'weekday' THEN 30.0 / 90 ELSE 60.0 / 120 END, 1) AS crowded_rider_min,
+               round(sum(c.buses), 2) AS buses, count(*)::INT AS routes
+        FROM stretch_crowding c
+        JOIN _dur d ON d.route_id = c.route_id AND d.seq = c.seq AND d.hour = c.window_start_min // 60
+        WHERE c.level <> 'no_data' AND c.buses > 0
+        GROUP BY from_stop_id, to_stop_id, c.day_type, c.window_start_min
+        ORDER BY pair_id, c.day_type, c.window_start_min""")
+    con.execute(f"COPY corridor_values TO '{paths.processed / 'corridor_values.parquet'}' (FORMAT PARQUET)")
+    # one geometry per stop pair: the lowest route id that serves it and has a shape
+    rows = con.execute("""
+        SELECT pair_id, coords FROM (
+            SELECT v.pair_id, sh.coords, row_number() OVER (PARTITION BY v.pair_id ORDER BY p.route_id) AS rn
+            FROM (SELECT DISTINCT pair_id, from_stop_id, to_stop_id FROM corridor_values) v
+            JOIN _pair p ON p.from_stop_id = v.from_stop_id AND p.to_stop_id = v.to_stop_id
+            JOIN segment_shapes sh ON sh.route_id = p.route_id AND sh.seq = p.seq + 1
+            WHERE p.route_id IN (SELECT route_id FROM _elig)) WHERE rn = 1 ORDER BY pair_id""").fetchall()
+    feats = [{"type": "Feature", "id": pid,
+              "properties": {"id": pid},
+              "geometry": {"type": "LineString", "coordinates": _simplify(json.loads(c), CORRIDOR_SIMPLIFY_M)}}
+             for pid, c in rows]
+    (paths.processed / "corridor_geometry.geojson").write_text(
+        json.dumps({"type": "FeatureCollection", "features": feats}, separators=(",", ":")))
+    return len(feats)
+
+
+def _summaries(con, paths) -> pd.DataFrame:
+    con.execute("""
+        COPY (SELECT route_id, any_value(short_name) AS short_name, any_value(operator) AS operator, day_type,
+                     window_start_min // 60 AS hour,
+                     round(max(buses), 2) AS buses,
+                     round(avg(people_mid), 2) AS mean_people, round(max(people_mid), 2) AS max_people,
+                     round(avg((level = 'crowded')::INT) FILTER (WHERE level <> 'no_data'), 4) AS share_crowded,
+                     round(avg((level = 'no_data')::INT), 4) AS share_no_data,
+                     round(avg((evidence = 'many_tickets')::INT), 4) AS share_many_tickets
+              FROM stretch_crowding WHERE window_start_min % 60 = 0
+              GROUP BY route_id, day_type, window_start_min // 60 ORDER BY route_id, day_type, hour)
+        TO '""" + str(paths.processed / "route_hour_summary.csv") + "' (HEADER, DELIMITER ',')")
+    con.execute("""
+        CREATE OR REPLACE TEMP TABLE _cov AS
+        SELECT m.operator, c.day_type, c.window_start_min // 60 AS hour, c.level, c.evidence,
+               sum(c.buses * CASE WHEN c.day_type = 'weekday' THEN 30.0 / 90 ELSE 60.0 / 120 END
+                   * coalesce(sh.length_m, 0) / 1000.0) AS bus_km
+        FROM stretch_crowding c JOIN route_meta m USING (route_id)
+        LEFT JOIN segment_shapes sh ON sh.route_id = c.route_id AND sh.seq = c.seq + 1
+        GROUP BY ALL""")
+    con.execute("""
+        COPY (SELECT operator, day_type, hour, level, evidence, round(bus_km, 1) AS bus_km,
+                     round(bus_km / sum(bus_km) OVER (PARTITION BY operator, day_type, hour), 4) AS share
+              FROM _cov ORDER BY operator, day_type, hour, level, evidence)
+        TO '""" + str(paths.processed / "coverage.csv") + "' (HEADER, DELIMITER ',')")
+    return con.execute("""
+        SELECT day_type,
+               CASE WHEN hour < 5 THEN '00-05' WHEN hour < 8 THEN '05-08' WHEN hour < 11 THEN '08-11'
+                    WHEN hour < 17 THEN '11-17' WHEN hour < 21 THEN '17-21' ELSE '21-24' END AS band,
+               level, evidence, sum(bus_km) AS bus_km
+        FROM _cov GROUP BY ALL""").df()
+
+
+def export_planner(con, paths) -> dict[str, int]:
+    """processed/planner/*.parquet from work.duckdb: only the whitelisted tables (never tickets, never
+    devi_vehicles)."""
+    paths.planner_dir.mkdir(parents=True, exist_ok=True)
+    out = {}
+    for t in PLANNER_TABLES:
+        if _has(con, t):
+            f = paths.planner_dir / f"{t}.parquet"
+            con.execute(f"COPY (SELECT * FROM {t}) TO '{f}' (FORMAT PARQUET)")
+            out[t] = f.stat().st_size
+    return out
+
+
+def run_levels(con, paths, gate: bool = True, **_) -> LevelStats:
+    paths.processed.mkdir(parents=True, exist_ok=True)
+    clock = Clock.load(con)
+    nd = effective_days(con)
+    nday = clean_day_totals(con)
+    n_clean = sum(nday.values())
+    _eligible(con)
+    _supply(con)
+    _rider_cells(con)
+    _cells(con, nd)
+    _route_level(con, n_clean)
+    _low_app_use(con, nday)
+    e_op, e_star, bounds, capped, infeasible = _scale(con)
+    _build_crowding(con)
+
+    tot_y, widened, mism = con.execute("""
+        SELECT coalesce(sum(sum_y), 0), coalesce(sum(sum_y) FILTER (WHERE src = 'widened'), 0),
+               coalesce(sum(sum_y) FILTER (WHERE src = 'none'), 0) FROM _cell""").fetchall()[0]
+    all_y = con.execute("SELECT coalesce(sum(pax), 0) FROM stretch_riders").fetchall()[0][0]
+    kept_y = con.execute("SELECT coalesce(sum(s.pax), 0) FROM stretch_riders s JOIN _elig e ON "
+                         "e.route_id = s.route_id AND e.day_type = s.day_type").fetchall()[0][0]
+    s0 = mism / tot_y if tot_y else 0.0
+    if gate and s0 >= S0_MAX_SHARE:
+        raise GateError(f"supply gate: {s0:.2%} of rider volume has no scheduled bus even after widening "
+                        f"(limit {S0_MAX_SHARE:.0%})")
+
+    n_pairs = _corridor(con, paths, clock)
+    bands = _summaries(con, paths)
+    con.execute(f"COPY stretch_crowding TO '{paths.processed / 'stretch_crowding.parquet'}' (FORMAT PARQUET)")
+    planner = export_planner(con, paths)
+    sizes = {f.name: f.stat().st_size for f in sorted(paths.processed.glob("*"))
+             if f.suffix in (".parquet", ".csv", ".geojson")}
+    sizes.update({f"planner/{k}.parquet": v for k, v in planner.items()})
+    rows = con.execute("SELECT count(*) FROM stretch_crowding").fetchall()[0][0]
+    n_nd = con.execute("SELECT count(*) FROM _rnd WHERE no_data").fetchall()[0][0]
+    stats = LevelStats(rows=rows, e_op=e_op, e_star=e_star, capped_routes=len(capped), infeasible=infeasible,
+                       s0_widened_share=widened / tot_y if tot_y else 0.0, s0_mismatch_share=s0,
+                       dropped_rider_share=1 - kept_y / all_y if all_y else 0.0, no_data_routes=n_nd,
+                       bands=bands, sizes=sizes)
+    dq = [("rows", rows), ("capped_routes", len(capped)), ("s0_widened_share", stats.s0_widened_share),
+          ("s0_mismatch_share", s0), ("dropped_rider_share", stats.dropped_rider_share),
+          ("corridor_pairs", n_pairs), ("no_data_routes", n_nd)] + [(f"e_op_{k}", v) for k, v in e_op.items()] + [
+        (f"e_star_{k}", v) for k, v in e_star.items()]
+    _register(con, "_dq", pd.DataFrame(dq, columns=["name", "value"]).astype({"value": float}))
+    con.execute("CREATE OR REPLACE TABLE dq_levels AS SELECT * FROM _dq")
+    _print_report(stats)
+    return stats
+
+
+def _print_report(st: LevelStats) -> None:
+    print(f"levels: {st}")
+    if st.infeasible:
+        print(f"levels: capacity bounds make the published total unreachable for {st.infeasible}")
+    b = st.bands
+    if not b.empty:
+        for dt in ("weekday", "weekend"):
+            for what in ("level", "evidence"):
+                t = b[b.day_type == dt].pivot_table(index="band", columns=what, values="bus_km", aggfunc="sum",
+                                                    fill_value=0.0)
+                t = t.div(t.sum(axis=1), axis=0).round(3)
+                print(f"levels: {dt} {what} share of bus-km by hour band\n{t.to_string()}")
+    print("levels: files " + ", ".join(f"{k} {v / 1e6:.2f} MB" for k, v in st.sizes.items()))
+
+
+def run_loads(con, paths, **kwargs):
+    """The `loads` stage: riders on stretches, then levels."""
+    run_riders(con, paths, **kwargs)
+    return run_levels(con, paths, **kwargs)

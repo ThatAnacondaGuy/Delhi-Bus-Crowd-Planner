@@ -140,3 +140,10 @@ HUB_STOP_CATEGORIES = {"metro": r"\bmetro\b", "rail": r"\b(railway|rly)\b"}
 
 # R19: a reverse route with fewer terminal boardings than this (month) is uninformative for the alighting correction
 ALIGHTING_MIN_REVERSE_BOARD = 5
+
+# Task 10: levels and outputs
+ALIGHTING_LAST_STRETCHES = 2   # an alighting-sensitive route's last stretches are Rough guess at best
+CORRIDOR_SIMPLIFY_M = 3.0      # Douglas-Peucker tolerance for corridor_geometry.geojson
+SUPPLY_WIDEN_MIN = 30          # S = 0 fallback: widen the base by this many minutes each side
+PLANNER_TABLES = ("canonical_stops", "segment_shapes", "places", "hub_alias", "passings", "service_hours",
+                  "service_class", "runtime_factors", "bus_mix", "route_specs")

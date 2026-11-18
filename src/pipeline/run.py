@@ -12,7 +12,7 @@ STAGES = {
     "clean": "src.pipeline.clean:run",
     "resolve": "src.pipeline.resolve:run",
     "network": "src.pipeline.network:run_network",
-    "loads": "src.pipeline.loads:run_riders",
+    "loads": "src.pipeline.loads:run_loads",
     "operator": "src.pipeline.operator:run",
     "validate": "src.pipeline.validate:run",
     "render": "src.pipeline.render:run",
