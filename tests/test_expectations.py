@@ -35,6 +35,21 @@ def test_matches_config():
     assert e.gps_stoptime_rho_min == config.GPS_STOPTIME_RHO_MIN
 
 
+def test_bad_grade_rejected(tmp_path):
+    import yaml
+    d = yaml.safe_load(YAML.read_text(encoding="utf-8"))
+    d["corridors"][0]["grade"] = "great"
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(yaml.safe_dump(d), encoding="utf-8")
+    with pytest.raises(ValueError, match="Ambedkar"):
+        load_expectations(bad)
+    d["corridors"][0]["grade"] = "strong"
+    d["corridors"][0]["peak"] = ["noon"]
+    bad.write_text(yaml.safe_dump(d), encoding="utf-8")
+    with pytest.raises(ValueError, match="Ambedkar"):
+        load_expectations(bad)
+
+
 @pytest.mark.skipif(not STOPS.exists(), reason="real GTFS absent")
 def test_stop_names_exist():
     with open(STOPS, encoding="utf-8-sig", newline="") as f:

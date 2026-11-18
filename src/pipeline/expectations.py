@@ -26,8 +26,18 @@ class Expectations:
     load_factor_band: tuple[float, float]
 
 
+GRADES = {"strong", "moderate", "weak"}
+PEAKS = {"am", "pm"}
+
+
 def load_expectations(path) -> Expectations:
     d = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    for c in d["corridors"]:
+        if c["grade"] not in GRADES:
+            raise ValueError(f"corridor {c['name']!r}: bad grade {c['grade']!r}")
+        bad = [p for p in c["peak"] if p not in PEAKS]
+        if bad:
+            raise ValueError(f"corridor {c['name']!r}: bad peak {bad!r}")
     corridors = [Corridor(c["name"], c["grade"], list(c["peak"]), c["direction"],
                           list(c["gtfs_stop_names"]), list(c["sources"]))
                  for c in d["corridors"]]

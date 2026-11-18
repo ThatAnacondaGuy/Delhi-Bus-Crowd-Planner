@@ -1,7 +1,7 @@
 # Pre-registered expectations. Committed before any model output exists (18 Nov 2026).
 # Corridors chosen from external evidence only (docs/superpowers/specs/2026-11-18-phase1-research-notes.md, section 1).
-# Stop names are exact stop_name values from the real GTFS stops.txt; research-note names that do not
-# exist exactly were dropped. Misses are reported, not tuned away.
+# Stop names are exact stop_name values from the real GTFS stops.txt, including combined names such as
+# 'ITO AGCR /  ITO' (spelling kept verbatim). Misses are reported, not tuned away.
 peaks:
   am:
   - 8
@@ -65,6 +65,22 @@ corridors:
   - Anand Vihar ISBT Main Road
   - GEETA COLONY
   - Mayur Vihar Phase-1 Metro Station
+  - ITO AGCR /  ITO
+  - Laxmi Nagar (Vikas Marg) / Laxmi Nagar Metro Station
+  - Laxmi Nagar Metro Station / Laxmi Nagar
+  - Laxmi Nagar X-ing / Laxmi Nagar
+  - Laxmi Nagar X-ing /Shakarpur Crossing
+  - Swasthya Vihar / Preet Vihar
+  - Preet Vihar Metro Station / New Rajdhani Enclave
+  - New Rajdhani Enclave / Preet Vihar Metro Station
+  - Patparganj / Patparganj More
+  - Patparganj More / Patparganj / SAMASPUR VILLAGE
+  - I P Extantion (Madhu Vihar) / Patparganj
+  - MAYUR VIHAR PHASE 1
+  - Mayur Vihar Phase 1 X-ing
+  - Mayur Vihar Phase-1 X-Ing
+  - Mayur Vihar Phase-1 / Mayur Vihar Phase-1 Metro Station
+  - Mayur Vihar Phase-1 / Mayur Vihar Ph-1 X-ing
   sources:
   - https://www.etvbharat.com/en/bharat/delhis-public-transport-in-disarray-as-bus-shortage-worsens-ahead-of-diwali-enn25101601961
   - https://aamaadmiparty.org/press-release/dtc-buses-in-delhi-in-shambles-people-waiting-for-hours-at-bus-stops-a-common-sight-saurabh-bharadwaj/
@@ -97,6 +113,7 @@ corridors:
   - Rajouri Garden Ring Road
   - Punjabi Bagh Ring Road
   - Azadpur Terminal
+  - Netaji Nagar / Bhikaji Cama Place
   sources:
   - https://www.downtoearth.org.in/energy/dtc-pilots-one-bus-route-design-to-demonstrate-improved-services-and-passengers
   - https://www.sgarchitects.in/images/research/pt/BRTDesign.pdf
@@ -115,6 +132,12 @@ corridors:
   - Sangam Vihar
   - Tuglakabad Fort
   - Pul Pehladpur (Badarpur)
+  - Khanpur Extension / Devali Road Xing
+  - Khanpur Extension / Devli Road Xing  / Dakshin Puri G-Block
+  - Hamdard Nagar / Sangam Vihar
+  - MB Road / Okhla More
+  - Tuglaqabad MB Road / Okhla more
+  - Badarpur M B Road / Rajiv Gandhi Stadium
   sources:
   - https://www.freepressjournal.in/india/delhi-people-block-mb-road-damage-dtc-buses-for-not-being-allowed-to-board-amid-covid-restrictions
   - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
@@ -138,6 +161,7 @@ corridors:
   - Madhuban Chowk Outer Ring Road
   - Jahangir Puri Crossing
   - Mukarba Chowk ORR
+  - Jahangir Puri Outer Ring Road / Jahangir Puri Crossing
   sources:
   - https://thedelhiwalla.blog/2015/01/07/city-hangout-mudrika-bus-route-ring-road/
   - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
@@ -206,6 +230,13 @@ corridors:
   - Libas Pur GT Road
   - Alipur GT Road
   - Narela Terminal
+  - AZADPUR / KEWAL PARK
+  - Azadpur / Kewal Park
+  - Kewal Park Azadpur
+  - GTK Bypass / Mukraba Chowk
+  - GTK ByPass / Mukarba chowk
+  - GTK ByPass /  Mubarak Chwok
+  - Mukraba Chowk / Sanjay Gandhi Transport Nagar
   sources:
   - https://www.sgarchitects.in/images/research/pt/BRTDesign.pdf
   - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
@@ -231,6 +262,8 @@ corridors:
   - Rajouri Garden
   - Moti Nagar
   - Karol Bagh Terminal
+  - DWARKA MOR / DWARKA CROSSING
+  - Dwarka Mor / DWARKA CROSSING
   sources:
   - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
   - https://transport.delhi.gov.in/sites/default/files/Transport/circulars-orders/public_notice_route_rationalization.pdf
@@ -254,6 +287,10 @@ corridors:
   - Ashok Park  (Rohtak Road)
   - Zakhira (Rohtak Road)
   - Sarai Rohilla (Rohtak Road)
+  - Nangloi Depot  / Jwala Puri
+  - Nangloi Depot /  Jwala Puri
+  - Madipur JJ Colony /  Madipuri Metro Station
+  - Madipur JJ Colony / MadiPur Metro Station
   sources:
   - https://www.sgarchitects.in/images/research/pt/BRTDesign.pdf
   - https://delhiplanning.delhi.gov.in/sites/default/files/Planning/generic_multiple_files/59_79_transport.pdf
