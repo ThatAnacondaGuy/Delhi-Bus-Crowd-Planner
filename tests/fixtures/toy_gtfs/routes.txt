@@ -1,0 +1,10 @@
+route_id,agency_id,route_short_name,route_long_name,route_type
+101,DTC,101UP,Alpha to Echo,3
+102,DTC,101DOWN,Echo to Alpha,3
+201,DIMTS,202UP,Bravo to Foxtrot,3
+202,DIMTS,202DOWN,Foxtrot to Bravo,3
+301,DTC,D-005UP,Alpha to Charlie,3
+401,DTC,OMS(+)UP,Ring,3
+501,DTC,909UP,Delta to Echo,3
+601,DTC,DS-12DOWN,Delta to Echo night,3
+701,DTC,SPL-1UP,School Special,3

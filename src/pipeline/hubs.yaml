@@ -1,0 +1,49 @@
+# Hub name -> typed-place aliases (lowercase) and GTFS stop-name stems (lowercase).
+Connaught Place:
+  aliases: [cp, rajiv chowk, super bazar, regal]
+  gtfs_stems: [connaught place]
+ISBT Anand Vihar:
+  aliases: [anand vihar isbt, isbt av, bus adda anand vihar]
+  gtfs_stems: [isbt anand vihar, anand vihar]
+Kashmere Gate:
+  aliases: [kashmiri gate, isbt kashmere gate]
+  gtfs_stems: [kashmere gate, kashmiri gate]
+Sarai Kale Khan:
+  aliases: [sarai kale khan isbt, skk]
+  gtfs_stems: [sarai kale khan]
+AIIMS:
+  aliases: [all india institute of medical sciences, aiims hospital]
+  gtfs_stems: [aiims]
+ITO:
+  aliases: [income tax office]
+  gtfs_stems: [ito]
+Mandi House:
+  aliases: [mandi house metro]
+  gtfs_stems: [mandi house]
+Nehru Place:
+  aliases: [nehru place terminal]
+  gtfs_stems: [nehru place]
+Dhaula Kuan:
+  aliases: [dhaula kuan metro, dhaulakuan]
+  gtfs_stems: [dhaula kuan, dhaulakuan]
+Laxmi Nagar:
+  aliases: [lakshmi nagar]
+  gtfs_stems: [laxmi nagar, lakshmi nagar]
+Chirag Delhi:
+  aliases: [chirag dilli]
+  gtfs_stems: [chirag delhi]
+Ambedkar Nagar:
+  aliases: [dr ambedkar nagar]
+  gtfs_stems: [ambedkar nagar]
+Mori Gate:
+  aliases: [mori gate terminal]
+  gtfs_stems: [mori gate]
+Badarpur Border:
+  aliases: [badarpur]
+  gtfs_stems: [badarpur border, badarpur]
+Saket:
+  aliases: [saket metro]
+  gtfs_stems: [saket]
+Karkardooma:
+  aliases: [karkardooma court, karkarduma]
+  gtfs_stems: [karkardooma, karkarduma]
