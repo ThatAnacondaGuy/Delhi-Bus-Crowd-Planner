@@ -316,3 +316,55 @@ def test_missing_rho_falls_back_with_note(make):
     res = p.plan("Alpha Terminal", "Echo Depot", "08:00", "weekday")
     assert by_role(res, "fastest") is not None
     assert any("frequency" in n for n in res["notes"])
+
+
+def test_less_crowded_absent_when_fastest_is_mostly_no_data(make):
+    p = make(crowd(301, 2, 20, 25, 30))  # only the alternative has rows; the fastest (101UP) is unknown
+    res = p.plan("Bravo Market", "Charlie Chowk", "08:00", "weekday")
+    assert by_role(res, "fastest") is not None
+    assert by_role(res, "less_crowded") is None
+
+
+def test_tradeoff_only_claims_what_is_true():
+    def trip(c, s):
+        return {"tally": (c, s)}
+    f = trip(0, 0)
+    txt = Planner._tradeoff(["less_crowded"], trip(0, 10), f, 15, 10, {})
+    assert "less standing" not in txt and "fewer standing" not in txt and txt.startswith("+5 min")
+    assert Planner._tradeoff(["less_crowded"], trip(0, 0), trip(0, 10), 15, 10, {}).endswith("10 fewer standing min")
+    assert Planner._tradeoff(["less_crowded"], trip(0, 5), trip(10, 0), 15, 10, {}).endswith("no crowded stretch")
+
+
+def test_headline_is_no_data_when_over_half_the_ride_is_unknown():
+    segs = [seg(6, "no_data", "none", "A", "B"), seg(4, "crowded", "many_tickets", "B", "C"),
+            seg(1, "no_data", "none", "C", "D")]
+    h = pl.headline_of(segs, "lvl")
+    assert h == {"level": "no_data", "evidence": "none", "stretch": {"from": "A", "to": "B", "minutes": 6}}
+    segs = [seg(5, "no_data", "none"), seg(5, "crowded")]       # exactly half: the usual rule applies
+    assert pl.headline_of(segs, "lvl")["level"] == "crowded"
+
+
+def test_leave_later_not_offered_when_later_trip_is_mostly_no_data(make):
+    rows = []
+    for s in (1, 2, 3, 4):
+        rows += crowd(101, s, 80, 80, 80, windows=[w for w in WEEKDAY_WINDOWS if w < 510])  # later windows unknown
+    res = make(rows).plan("Alpha Terminal", "Echo Depot", "08:00", "weekday")
+    assert by_role(res, "leave_later") is None
+
+
+def _with_after_midnight_passing(tmp_path, toy_gtfs_dir, con):
+    paths = build_export(tmp_path, toy_gtfs_dir, con, STANDING_101)
+    f = paths.planner_dir / "passings.parquet"
+    df = pd.read_parquet(f)
+    extra = pd.DataFrame({"route_id": 101, "seq": np.arange(1, 6, dtype="int32"), "minute": np.int32(1470)})
+    pd.concat([df, extra]).astype({"route_id": "int64", "seq": "int32", "minute": "int32"}).to_parquet(f, index=False)
+    return Planner.load(paths)
+
+
+def test_after_midnight_buses_are_found_not_called_no_service(tmp_path, toy_gtfs_dir, con):
+    p = _with_after_midnight_passing(tmp_path, toy_gtfs_dir, con)
+    for dep in ("23:40", "00:30"):
+        res = p.plan("Alpha Terminal", "Echo Depot", dep, "weekday")
+        assert res["options"], dep
+        assert not any("No scheduled service" in n for n in res["notes"])
+        assert all(o["timetable_uncertain"] for o in res["options"])

@@ -36,6 +36,7 @@ WEIGHT = {"seats": 0.0, "standing": 0.5, "crowded": 1.5, "no_data": 0.5}
 RANK = {"seats": 0, "standing": 1, "crowded": 2}
 LATE_OFFSETS = (10, 20, 30, 40)
 NIGHT_BEFORE, NIGHT_AFTER = 5 * 60, 23 * 60
+NO_DATA_CUTOFF = 0.5            # R28: above this share of riding minutes the headline is no_data
 MAX_EXTRA_WORDS = 2             # a partial match may add at most this many words to what was typed
 HEADLINE_MIN = 5.0              # a level counts toward the headline from this many minutes
 EARLY_WAIT_MIN = 30.0           # a rider may wait this long for a route's first bus
@@ -119,6 +120,19 @@ def headline_of(segs: list[dict], field: str) -> dict:
     for s in segs:
         mins[s[field]] = mins.get(s[field], 0.0) + s["minutes"]
     known = {k: v for k, v in mins.items() if k != "no_data"}
+    total = sum(mins.values())
+    if total > 0 and mins.get("no_data", 0.0) > NO_DATA_CUTOFF * total:   # R28: mostly unknown ride
+        lv = "no_data"
+        best, run = None, []
+        for s in segs + [None]:
+            if s is not None and s[field] == lv and (not run or run[-1]["leg"] == s["leg"]):
+                run.append(s)
+                continue
+            if run and (best is None or sum(x["minutes"] for x in run) > sum(x["minutes"] for x in best)):
+                best = run
+            run = [s] if s is not None and s[field] == lv else []
+        return {"level": "no_data", "evidence": "none", "stretch": {"from": best[0]["from_name"],
+                "to": best[-1]["to_name"], "minutes": _r(sum(x["minutes"] for x in best))}}
     qual = [k for k in ("crowded", "standing", "seats") if mins.get(k, 0.0) >= HEADLINE_MIN]
     if qual:
         lv = qual[0]
@@ -560,7 +574,12 @@ class Planner:
             return None
         first = self.first[row]
         if t < first:
-            return (first, first - t, False) if first - t <= EARLY_WAIT_MIN else None
+            if first - t <= EARLY_WAIT_MIN:
+                return first, first - t, False
+            if t + 1440 <= self.last[row]:               # after-midnight passings (minute >= 1440) serve 00:00-04:59
+                got = self._board(ri, pos, t + 1440, day)
+                return None if got is None else (got[0] - 1440, got[1], got[2])
+            return None
         h = int(t // 60)
         cnt = self.cnt[row]
         n = cnt[h] if h < HOURS else 0
@@ -781,20 +800,20 @@ class Planner:
         cands = list(trips.values())
         fastest = min(cands, key=lambda t: (t["arrive"], t["changes"], t["tally"]))
         fast_min = fastest["arrive"] - dep
-        chosen: list[tuple[dict, list[str], str]] = []
+        chosen: list[tuple[dict, list[str]]] = []
         less = self._less_crowded(fastest, cands, dep)
         if less is fastest:
-            chosen.append((fastest, ["fastest", "less_crowded"], ""))
+            chosen.append((fastest, ["fastest", "less_crowded"]))
         else:
-            chosen.append((fastest, ["fastest"], ""))
+            chosen.append((fastest, ["fastest"]))
             if less is not None:
-                chosen.append((less, ["less_crowded"], ""))
+                chosen.append((less, ["less_crowded"]))
         later = self._leave_later(fastest, dep, day)
         if later is not None:
-            chosen.append((later, ["leave_later"], ""))
-        res["options"] = [self._render(t, roles, fastest, dep + (t["dep"] - dep), fast_min) for t, roles, _ in chosen]
+            chosen.append((later, ["leave_later"]))
+        res["options"] = [self._render(t, roles, fastest, t["dep"], fast_min) for t, roles in chosen]
         seen = set()
-        for t, _r_, _ in chosen:
+        for t, _roles in chosen:
             for short, hour in t["fallback"]:
                 if (short, hour) not in seen:
                     seen.add((short, hour))
@@ -814,7 +833,8 @@ class Planner:
         rows = [self.r_row0[ri] + pos for s in org for day in DAYS for ri, pos in self.stop_routes[day][s]]
         firsts = [self.first[r] for r in rows if self.last[r] >= 0]
         lasts = [self.last[r] for r in rows if self.last[r] >= 0]
-        if not firsts or dep > max(lasts) or dep < min(firsts) - EARLY_WAIT_MIN:
+        if not firsts or (dep > max(lasts) and dep + 1440 > max(lasts)) or \
+                (dep < min(firsts) - EARLY_WAIT_MIN and dep + 1440 > max(lasts)):
             span = f" Buses near {name} run about {_hhmm(min(firsts))} to {_hhmm(max(lasts))}." if firsts else ""
             return f"No scheduled service at {_hhmm(dep)} near {name}.{span}"
         return f"No bus journey with up to {MAX_BUSES} buses was found at {_hhmm(dep)}; try another time."
@@ -830,10 +850,12 @@ class Planner:
     def _less_crowded(self, fastest: dict, cands: list[dict], dep: float):
         """The trip with the fewest crowded, then standing, minutes (upper end) within the time budget; None when
         no eligible alternative exists. Returns `fastest` itself when it wins against a real alternative."""
+        if fastest["no_data_share"] > NO_DATA_CUTOFF:
+            return None                      # nothing to compare an alternative against
         budget = max(fastest["arrive"] - dep + 15.0, (fastest["arrive"] - dep) * 1.3)
         alts = []
         for t in cands:
-            if t is fastest or t["arrive"] - dep > budget or t["no_data_share"] > 0.5:
+            if t is fastest or t["arrive"] - dep > budget or t["no_data_share"] > NO_DATA_CUTOFF:
                 continue
             if t["tally"] < fastest["tally"] and t["tally_pess"] >= fastest["tally"] and \
                     any("low_app_use" in s["flags"] for s in t["segs"]):
@@ -841,7 +863,7 @@ class Planner:
             alts.append(t)
         if not alts:
             return None
-        pool = alts + ([fastest] if fastest["no_data_share"] <= 0.5 else [])
+        pool = alts + [fastest]
         return min(pool, key=lambda t: (t["tally"], t["arrive"], t is not fastest))
 
     def _leave_later(self, fastest: dict, dep: float, day: str):
@@ -852,7 +874,7 @@ class Planner:
             if dep + off >= 1440:
                 break
             t = self._run(fastest["spec"], dep + off, day)
-            if t is None:
+            if t is None or t["no_data_share"] > NO_DATA_CUTOFF:
                 continue
             lo, mid, hi = (headline_of(t["segs"], f)["level"] for f in ("lvl_lo", "lvl", "lvl_hi"))
             if lo == mid == hi and _rank(mid) >= 0 and _rank(mid) < RANK[base]:
@@ -902,10 +924,10 @@ class Planner:
         lead = f"+{extra} min" if extra > 0 else "Same time"
         c, s = t["tally"]
         fc, fs = fastest["tally"]
-        if c == 0:
-            tail = "no crowded stretch" if fc > 0 else "less standing"
-        elif fc - c >= 1:
-            tail = f"{_r(fc - c)} fewer crowded min"
+        if fc - c >= 1:
+            tail = "no crowded stretch" if c == 0 else f"{_r(fc - c)} fewer crowded min"
+        elif fc == c and fs - s >= 1:
+            tail = f"{_r(fs - s)} fewer standing min"
         else:
-            tail = f"{_r(fs - s)} fewer standing min" if fs - s >= 1 else "less crowded"
+            tail = "similar crowding"
         return f"{lead}, {tail}"
