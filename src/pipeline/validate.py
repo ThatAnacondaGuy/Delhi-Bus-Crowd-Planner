@@ -674,15 +674,32 @@ def published(con, exp) -> dict:
         FROM passings p JOIN route_meta m USING (route_id) JOIN service_class s USING (route_id)
         LEFT JOIN segment_shapes sh ON sh.route_id = p.route_id AND sh.seq = p.seq + 1
         WHERE m.operator = 'DTC' AND p.seq <= m.n_stops - 1 AND s."class" IN ('regular', 'office_special')""").fetchone()[0]
-    rho = 1.0  # no GPS aggregates yet
-    bus_km = {"model": float(km[0]) * rho, "regular_and_office_only": float(km_reg) * rho, "rho": rho,
-              "rho_source": "none: GPS aggregates not available, so every scheduled trip counts as run",
+    has_gps = _gps_table(con)
+    if has_gps:
+        rho_km, rho_km_reg = con.execute("""
+            SELECT coalesce(sum(sh.length_m * least(1.0, coalesce(g.rho_model, 1.0))) / 1000.0, 0),
+                   coalesce(sum(sh.length_m * least(1.0, coalesce(g.rho_model, 1.0)))
+                            FILTER (WHERE s."class" IN ('regular', 'office_special')) / 1000.0, 0)
+            FROM passings p JOIN route_meta m USING (route_id) JOIN service_class s USING (route_id)
+            LEFT JOIN segment_shapes sh ON sh.route_id = p.route_id AND sh.seq = p.seq + 1
+            LEFT JOIN gps_route_hour g ON g.route_id = p.route_id AND g.hour = (p.minute % 1440) // 60
+                                      AND g.day_type = 'weekday'
+            WHERE m.operator = 'DTC' AND p.seq <= m.n_stops - 1""").fetchone()
+        rho_km, rho_km_reg = float(rho_km), float(rho_km_reg)
+        rho_source = ("GPS: share of scheduled trips that ran, per route, hour and weekday, from ten sample days "
+                      "(routes without enough ticket-linked vehicles keep rho = 1)")
+    else:
+        rho_km, rho_km_reg = float(km[0]), float(km_reg)
+        rho_source = "none: GPS aggregates not available, so every scheduled trip counts as run"
+    rho = rho_km / float(km[0]) if km[0] else 1.0
+    bus_km = {"model": rho_km, "scheduled": float(km[0]), "regular_and_office_only": rho_km_reg, "rho": rho,
+              "rho_source": rho_source, "gps": has_gps,
               "passings": int(km[1]), "passings_without_shape": int(km[2]),
-              "published": 501_000.0, **published_check(float(km[0]) * rho, exp.dtc_bus_km)}
+              "published": 501_000.0, **published_check(rho_km, exp.dtc_bus_km)}
     bus_km["basis"] = ("each scheduled trip's stretches once (one passing per trip per stop, stretch = stop k to k+1, "
                        "rings capped at n_stops-1), on the feed's single service day (one service_id), the per-day "
                        "basis of the published figure")
-    bus_km["implied_rho"] = 501_000.0 / bus_km["model"] if bus_km["model"] else None
+    bus_km["implied_rho"] = 501_000.0 / bus_km["scheduled"] if bus_km["scheduled"] else None
     lf = con.execute("""
         SELECT operator, sum(bus_km * people_mid) / sum(bus_km * seats), sum(bus_km), count(*)
         FROM _scx WHERE day_type = 'weekday' AND people_mid IS NOT NULL AND bus_km > 0 GROUP BY ROLLUP(operator)
@@ -690,7 +707,8 @@ def published(con, exp) -> dict:
     tot_km = con.execute("SELECT sum(bus_km) FROM _scx WHERE day_type = 'weekday' AND bus_km > 0").fetchone()[0]
     by_op = {r[0] or "all": {"load_factor": float(r[1]), "bus_km": float(r[2])} for r in lf}
     allv = by_op.get("all", {"load_factor": float("nan"), "bus_km": 0.0})
-    first_order = allv["load_factor"] / bus_km["implied_rho"] if bus_km["implied_rho"] else None
+    # passenger-km per seat-km scales with 1/rho to first order: restate the figure at the implied rho
+    first_order = allv["load_factor"] * bus_km["rho"] / bus_km["implied_rho"] if bus_km["implied_rho"] else None
     load_factor = {"model": allv["load_factor"], "by_operator": by_op,
                    "coverage_bus_km_share": float(allv["bus_km"] / tot_km) if tot_km else None,
                    "at_implied_rho_first_order": first_order,
@@ -849,14 +867,55 @@ def pair_window(con) -> dict:
     return res
 
 
+def _gps_table(con) -> bool:
+    """True when the model ran with GPS aggregates (gps_route_hour with rho_model)."""
+    try:
+        cols = {r[0] for r in con.execute("DESCRIBE gps_route_hour").fetchall()}
+    except Exception:
+        return False
+    return "rho_model" in cols
+
+
+def gps_diagnostics(con) -> dict:
+    """rho distribution (route level, pooled over hours) and run-time cross-check against the ticket clock."""
+    if not _gps_table(con):
+        return {"status": "not available", "note": "no GPS aggregates; rho = 1"}
+    out = {"status": "available"}
+    for dt in ("weekday", "weekend"):
+        r = con.execute("""
+            SELECT route_id, any_value(coverage) AS cov, sum(observed_trips) AS obs, sum(scheduled_trips) AS sch,
+                   sum(observed_trips * (source = 'gps')::INT) AS obs_gps
+            FROM gps_route_hour WHERE day_type = ? GROUP BY 1""", [dt]).df()
+        ok = r[(r["cov"] >= 0.8) & (r["sch"] > 0)]
+        rho = ok["obs"] / (ok["sch"] * ok["cov"])
+        q = rho.quantile([0.1, 0.25, 0.5, 0.75, 0.9]).tolist() if len(rho) else [None] * 5
+        g = con.execute("""
+            SELECT sum(rho_first * scheduled_trips) / sum(scheduled_trips), sum(rho_mid * scheduled_trips) / sum(scheduled_trips),
+                   sum(rho_last * scheduled_trips) / sum(scheduled_trips),
+                   sum(rho * scheduled_trips) / sum(scheduled_trips), count(*)
+            FROM gps_route_hour WHERE day_type = ? AND rho IS NOT NULL""", [dt]).fetchall()[0]
+        out[dt] = {"routes": int(len(r)), "routes_with_coverage_80": int((r["cov"] >= 0.8).sum()),
+                   "routes_without_linked_vehicles": int(r["cov"].isna().sum()),
+                   "share_coverage_80": float((r["cov"] >= 0.8).mean()) if len(r) else None,
+                   "route_rho_quantiles": dict(zip(("p10", "p25", "p50", "p75", "p90"), q)),
+                   "scheduled_weighted_rho": float(g[3]) if g[3] is not None else None,
+                   "first_third": g[0], "middle_third": g[1], "last_third": g[2], "cells": int(g[4]),
+                   "network_trips_per_scheduled": float(r["obs"].sum() / r["sch"].sum()) if r["sch"].sum() else None}
+    rt = con.execute("""
+        SELECT hour, sum(runtime_ratio * scheduled_trips) / sum(scheduled_trips) AS ratio, count(*) AS cells
+        FROM gps_route_hour WHERE day_type = 'weekday' AND runtime_ratio IS NOT NULL AND scheduled_trips > 0
+        GROUP BY 1 ORDER BY 1""").fetchall()
+    out["runtime_ratio_by_hour"] = {int(h): {"ratio": float(r_), "cells": int(c)} for h, r_, c in rt}
+    return out
+
+
 def diagnostics(con) -> dict:
     t0 = time.perf_counter()
     _scx(con)
     d = {"over_capacity": over_capacity(con), "level_shares": level_shares(con),
          "resolution_below_80": resolution(con), "terminal_asymmetry": terminal_asymmetry_summary(con),
          "null_vs_linked_split_half": split_half(con), "pair_ratio_window": pair_window(con),
-         "gps_rho": {"status": "not available", "note": "GPS aggregates (Task 13) do not exist yet; rho = 1"},
-         "gps_run_time_cross_check": {"status": "not available"},
+         "gps_rho": gps_diagnostics(con),
          "choice_stability": {"status": "not available", "note": "needs the planner (alternatives per "
                               "origin, destination and hour)"}}
     d["seconds"] = round(time.perf_counter() - t0, 1)
@@ -955,14 +1014,15 @@ def headline(con, gates, exp_res, rep, pub, sens, diag, repro) -> dict:
         "weekend_flatter": exp_res["weekend"]["flatter"], "weekend_later_peak": exp_res["weekend"]["later_peak"],
         "radial_hit": exp_res["radial"]["hit"], "radial_pairs": exp_res["radial"]["pairs"],
         "radial_am_share": exp_res["radial"]["am_share"], "radial_pm_share": exp_res["radial"]["pm_share"],
-        "dtc_bus_km_model": pub["dtc_bus_km"]["model"], "dtc_bus_km_published": pub["dtc_bus_km"]["published"],
+        "dtc_bus_km_model": pub["dtc_bus_km"]["model"], "dtc_bus_km_scheduled": pub["dtc_bus_km"]["scheduled"],
+        "dtc_rho_effective": pub["dtc_bus_km"]["rho"], "dtc_bus_km_published": pub["dtc_bus_km"]["published"],
         "dtc_bus_km_hit": pub["dtc_bus_km"]["hit"], "dtc_implied_rho": pub["dtc_bus_km"]["implied_rho"],
         "load_factor_model": pub["load_factor"]["model"], "load_factor_hit": pub["load_factor"]["hit"],
         "load_factor_dtc": pub["load_factor"]["by_operator"].get("DTC", {}).get("load_factor"),
         "load_factor_dimts": pub["load_factor"]["by_operator"].get("DIMTS", {}).get("load_factor"),
         "bus_km_share_commuter_facing": cov["all"].get("commuter_facing"),
         "bus_km_share_many_tickets": cov["all"].get("many_tickets"),
-        "gps_available": False,
+        "gps_available": pub["dtc_bus_km"]["gps"],
     }
     for k, v in sens.items():
         h[f"sensitivity_{k}"] = v["share_changed"]
@@ -1028,18 +1088,23 @@ def render_md(rep: dict) -> str:
       f"top decile, against {_pct(h['corridor_top_decile_chance'], 0)} at random) and the stricter both-ends mapping "
       f"({h['corridor_hits_both_ends']} of {h['corridors_total']}).")
     a(f"- Published figures: modelled DTC bus-km {_num(h['dtc_bus_km_model'], 0)} per day against 501,000 "
-      f"({_yn(h['dtc_bus_km_hit'])}; the schedule offers {_num(h['dtc_bus_km_model'] / h['dtc_bus_km_published'], 2)} "
-      f"times the published figure, an implied rho of {_num(h['dtc_implied_rho'], 2)}); modelled load factor {_num(h['load_factor_model'], 3)} against the "
+      f"({_yn(h['dtc_bus_km_hit'])}); modelled load factor {_num(h['load_factor_model'], 3)} against the "
       f"0.78-0.89 band ({_yn(h['load_factor_hit'])}).")
-    a(f"- Scheduled DTC bus-km is {_num(h['dtc_bus_km_model'] / h['dtc_bus_km_published'], 2)} times the published "
-      f"figure (implied share of trips run about {_num(h['dtc_implied_rho'], 2)} if the published figure is right); "
-      f"until GPS-based trip counts are in, loads may be understated. The model figure counts each scheduled trip's "
-      f"segments once, on the feed's single service day, the same per-day basis as the published figure.")
+    a(f"- Scheduled DTC bus-km is {_num(h['dtc_bus_km_scheduled'] / h['dtc_bus_km_published'], 2)} times the published "
+      f"figure (implied share of trips run about {_num(h['dtc_implied_rho'], 2)} if the published figure is right). "
+      + (f"The model applies the share of trips that ran, measured from GPS, which is "
+         f"{_num(h['dtc_rho_effective'], 2)} bus-km weighted for DTC. " if h["gps_available"] else
+         "The GPS layer is not in, so the model counts every scheduled trip as run and loads may be understated. ")
+      + "The model figure counts each scheduled trip's segments once, on the feed's single service day, the same "
+        "per-day basis as the published figure.")
     a(f"- Routes whose last stretches depend on the alighting correction: {h['alighting_sensitive_routes']}.")
     a(f"- Coverage: {_pct(h['bus_km_share_commuter_facing'])} of scheduled bus-km has a commuter-facing level, "
       f"{_pct(h['bus_km_share_many_tickets'])} rests on many tickets.")
-    a(f"- GPS layer: not available, so bus supply uses the schedule (rho = 1) and the GPS checks are marked not "
-      f"available; they are not counted as misses.")
+    a("- GPS layer: " + ("in: bus supply is scheduled buses times the share that ran (GPS, ten sample days); the "
+                        "stop-time corroboration is not built and is not counted as a miss."
+                        if h["gps_available"] else
+                        "not available, so bus supply uses the schedule (rho = 1) and the GPS checks are marked not "
+                        "available; they are not counted as misses."))
     a(f"- Run time of the validation stage: {_num(rep['diagnostics']['runtime_seconds'], 0)} s.\n")
 
     a("## A. Gates (a failure stops the run)\n")
@@ -1066,7 +1131,7 @@ def render_md(rep: dict) -> str:
                                                      f"{w['weekday_peak_hour']:02d}:00"),
         ("Radial: inbound busier in the AM", _yn(r["am_hit"]), f"{_pct(r['am_share'])} of {r['pairs']} route pairs"),
         ("Radial: outbound busier in the PM", _yn(r["pm_hit"]), f"{_pct(r['pm_share'])} of {r['pairs']} route pairs"),
-        ("GPS stop-time activity", "not available", "GPS aggregates are not built yet; not counted as a miss"),
+        ("GPS stop-time activity", "not available", "the stop-time corroboration is not built; not counted as a miss"),
     ]))
     a("\n### The ten researched corridors\n")
     a(f"A corridor is a hit when one of its mapped stretches is in the top decile of weekday crowded "
@@ -1120,12 +1185,12 @@ def render_md(rep: dict) -> str:
         ("Fleet load factor (weekday passenger-km / seat-km)", _num(lf["model"], 3), "DTC 0.88-0.89, cluster 0.78",
          f"{lf['band'][0]:g}-{lf['band'][1]:g}", _yn(lf["hit"])),
     ]))
-    a(f"\nBoth are rough: definitions differ from ours. The schedule offers {_num(bk['model'] / bk['published'], 2)} "
+    a(f"\nBoth are rough: definitions differ from ours. The schedule offers {_num(bk['scheduled'] / bk['published'], 2)} "
       f"times the published DTC bus-km, so only about {_pct(bk['implied_rho'], 0)} of scheduled DTC service would "
       f"have run (an implied rho of {_num(bk['implied_rho'], 2)}). With rho = 1 every scheduled bus counts as "
       f"running, which spreads the riders over more buses than ran and so understates people per bus; passenger-km "
       f"per seat-km scales with 1/rho to first order ({_num(lf['at_implied_rho_first_order'], 2)} at the implied "
-      f"rho). The GPS layer is what sets rho from data. Bus-km uses rho = 1 ({bk['rho_source']}); "
+      f"rho). Bus-km uses an average rho of {_num(bk['rho'], 2)} ({bk['rho_source']}); "
       f"{bk['passings_without_shape']:,} of {bk['passings']:,} DTC passings have no segment length. Load factor: DTC "
       f"{_num(lf['by_operator'].get('DTC', {}).get('load_factor'), 3)}, cluster "
       f"{_num(lf['by_operator'].get('DIMTS', {}).get('load_factor'), 3)}, over {_pct(lf['coverage_bus_km_share'])} of "
@@ -1177,7 +1242,31 @@ def render_md(rep: dict) -> str:
       f"tickets in each half, the two halves correlate at {_num(sh['pearson'], 3)} (Pearson) and "
       f"{_num(sh['spearman'], 3)} (Spearman); the hourly profile correlates at "
       f"{_num(sh['hourly_profile_correlation'], 3)}.\n")
-    a("### Not available yet\n\nGPS rho distribution and run-time cross-check (GPS aggregates not built); choice "
+    gd = dg["gps_rho"]
+    if gd["status"] == "available":
+        a("### GPS: share of scheduled trips that ran, and run times\n")
+        a("A trip counts as run when one vehicle passes at least 80% of the route's stops in order (positions "
+          "interpolated between pings, 75 m), on ten sample days (six weekdays, four weekend days). The share is "
+          "observed trips divided by scheduled trips times coverage, and is set only where at least 80% of the "
+          "route's ticket-linked vehicles appear in the feed; other routes keep the schedule.\n")
+        rows = []
+        for dt in ("weekday", "weekend"):
+            x = gd[dt]
+            qq = x["route_rho_quantiles"]
+            rows.append((dt, f"{x['routes_with_coverage_80']:,} of {x['routes']:,} ({_pct(x['share_coverage_80'])})",
+                         _num(qq["p10"], 2), _num(qq["p50"], 2), _num(qq["p90"], 2),
+                         _num(x["scheduled_weighted_rho"], 2),
+                         f"{_num(x['first_third'], 2)} / {_num(x['middle_third'], 2)} / {_num(x['last_third'], 2)}"))
+        a(_tbl(["Day type", "Routes with coverage 0.8+", "Route share 10th pct", "Median", "90th pct",
+                "Trip-weighted share", "First / middle / last third"], rows))
+        a("\nRun time, GPS against the ticket-pair clock (1.00 means they agree; trip-weighted mean over route-hours, "
+          "weekdays):\n")
+        rt = gd["runtime_ratio_by_hour"]
+        hrs = sorted(rt)
+        a(_tbl(["Hour"] + [f"{h_:02d}" for h_ in hrs], [("Ratio",) + tuple(_num(rt[h_]["ratio"], 2) for h_ in hrs)]))
+        a("")
+    a("### Not available yet\n\n" + ("Choice " if gd["status"] == "available" else "GPS rho distribution and run-time cross-check (GPS aggregates "
+                                                   "not built); choice ") +
       "stability for alternatives with the same origin, destination and hour (planner not built).\n")
     text = "\n".join(L)
     for w_ in FORBIDDEN:
