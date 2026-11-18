@@ -60,6 +60,15 @@ def test_waterfill():
     assert Er == {"a": 5.0, "b": 8.0}
 
 
+def test_waterfill_ceiling_binds_and_leaves_residual():
+    app, bound = {"a": 100, "b": 100}, {"a": 10.0}
+    E, Er = waterfill(app, bound, total=4000, ceiling=15.0)
+    assert E == 15.0 and Er == {"a": 10.0, "b": 15.0}
+    assert 4000 - sum(app[r] * Er[r] for r in app) == pytest.approx(1500.0)  # unallocated
+    E, _ = waterfill(app, bound, total=4000, ceiling=100.0)                 # ceiling above: unchanged
+    assert E == pytest.approx(30.0)
+
+
 def test_evidence_states():
     s = BUS_SPECS["12m_ac"]
     assert evidence(20, 30, s, set(), False) == "rough"          # spans seats/standing

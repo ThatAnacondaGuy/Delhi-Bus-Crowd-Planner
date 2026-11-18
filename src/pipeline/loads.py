@@ -19,7 +19,7 @@ import pandas as pd
 from .clean import excluded
 from .config import (ALIGHTING_LAST_STRETCHES, ALIGHTING_MIN_REVERSE_BOARD, BOUND_MIN_TICKETS, BOUND_PERCENTILE,
                      CORRIDOR_SIMPLIFY_M, EXCLUDED_DATES, EXCLUDED_WINDOWS, LOW_APP_USE_FRACTION,
-                     NO_DATA_PERCENTILE, PLANNER_TABLES, PUBLISHED_RIDERSHIP, S0_MAX_SHARE, SCALE_RANGE,
+                     NO_DATA_PERCENTILE, PLANNER_TABLES, PUBLISHED_RIDERSHIP, S0_MAX_SHARE, SCALE_RANGE, E_SCALE_CEILING_MULT,
                      SEATS_FRACTION, SUPPLY_WIDEN_MIN, WINDOWS)
 from .errors import GateError
 from .network import Clock
@@ -369,6 +369,7 @@ class LevelStats:
     s0_mismatch_share: float
     dropped_rider_share: float
     no_data_routes: int
+    ops: dict = field(default_factory=dict)
     bands: pd.DataFrame = field(default_factory=pd.DataFrame, repr=False)
     sizes: dict = field(default_factory=dict)
 
@@ -414,11 +415,14 @@ def sampling_se(daily) -> float:
     return float(v.std(ddof=1) / np.sqrt(len(v))) if len(v) > 1 else 0.0
 
 
-def waterfill(app_by_route: dict, bound_by_route: dict, total: float) -> tuple[float, dict]:
+def waterfill(app_by_route: dict, bound_by_route: dict, total: float,
+              ceiling: float | None = None) -> tuple[float, dict]:
     """Operator scale E* with per-route capacity bounds: E_r = min(E*, B_r) and sum(app_r x E_r) = total.
     Routes without a bound are absent from bound_by_route (or inf). If even all-capped cannot reach the total
     E* is the largest bound (every bounded route capped). Returns (E*, E_r)."""
     inf = float("inf")
+    if ceiling is not None:  # R21: E* never exceeds the ceiling; the total is then not forced to match
+        bound_by_route = {r: min(bound_by_route.get(r, inf), ceiling) for r in app_by_route}
     items = sorted(((bound_by_route.get(r, inf), r, a) for r, a in app_by_route.items() if a > 0),
                    key=lambda t: (t[0], str(t[1])))
     remaining, weight, e = float(total), sum(a for _, _, a in items), 0.0
@@ -615,7 +619,7 @@ def _low_app_use(con, nday: dict) -> None:
         WHERE md.n >= 2 AND rt.rate < md.med * {LOW_APP_USE_FRACTION}""")
 
 
-def _scale(con, cells: str = "_cell") -> tuple[dict, dict, dict, set, list]:
+def _scale(con, cells: str = "_cell") -> tuple[dict, dict, dict, set, list, dict]:
     """Per operator: E_op, the capacity bounds, the water-filled E*; fills _er(route_id, e_r, bound, capped)."""
     bounds = dict(con.execute(f"""
         SELECT c.route_id, s.crush / quantile_cont(c.l, {BOUND_PERCENTILE}) AS b
@@ -623,26 +627,30 @@ def _scale(con, cells: str = "_cell") -> tuple[dict, dict, dict, set, list]:
         WHERE c.day_type = 'weekday' AND c.tickets >= {BOUND_MIN_TICKETS} AND c.l > 0
         GROUP BY c.route_id, s.crush HAVING quantile_cont(c.l, {BOUND_PERCENTILE}) > 0""").fetchall())
     app = con.execute("SELECT route_id, operator, app FROM _app").fetchall()
-    e_op, e_star, er, capped, infeasible = {}, {}, {}, set(), []
+    e_op, e_star, er, capped, infeasible, ops = {}, {}, {}, set(), [], {}
     for op, src in PUBLISHED_RIDERSHIP.items():
         by = {r: a for r, o, a in app if o == op}
         tot = sum(by.values())
         if tot <= 0:
             continue
         e_op[op] = src.value / tot
-        e, e_r = waterfill(by, bounds, src.value)
+        ceil = E_SCALE_CEILING_MULT * e_op[op]
+        e, e_r = waterfill(by, bounds, src.value, ceil)
         e_star[op] = e
         er.update(e_r)
         got = sum(by[r] * e_r[r] for r in by)
-        if abs(got / src.value - 1) > 1e-6:
+        unalloc = 1 - got / src.value
+        short = unalloc > 1e-6
+        if short:
             infeasible.append(op)
-            capped |= {r for r in by if r in bounds and by[r] > 0}
-        else:
-            capped |= {r for r in by if r in bounds and by[r] > 0 and bounds[r] < e}
+        cap_ops = {r for r in by if r in bounds and by[r] > 0 and (bounds[r] <= e if short else bounds[r] < e)}
+        capped |= cap_ops
+        ops[op] = {"e_op": e_op[op], "e_star": e, "ceiling": ceil, "ceiling_bound": bool(short and e >= ceil * (1 - 1e-9)),
+                   "capped_routes": len(cap_ops), "unallocated_share": unalloc}
     rows = [(r, er.get(r), bounds.get(r), r in capped) for r, _, _ in app]
     _register(con, "_er", pd.DataFrame(rows, columns=["route_id", "e_r", "bound", "capped"]).astype(
         {"route_id": "int64", "e_r": "float64", "bound": "float64", "capped": "bool"}))
-    return e_op, e_star, bounds, capped, infeasible
+    return e_op, e_star, bounds, capped, infeasible, ops
 
 
 def _durations(con, clock: Clock) -> None:
@@ -835,7 +843,7 @@ def run_levels(con, paths, gate: bool = True, **_) -> LevelStats:
     _cells(con, nd)
     _route_level(con, n_clean)
     _low_app_use(con, nday)
-    e_op, e_star, bounds, capped, infeasible = _scale(con)
+    e_op, e_star, bounds, capped, infeasible, ops = _scale(con)
     _build_crowding(con)
 
     tot_y, widened, mism = con.execute("""
@@ -858,14 +866,15 @@ def run_levels(con, paths, gate: bool = True, **_) -> LevelStats:
     sizes.update({f"planner/{k}.parquet": v for k, v in planner.items()})
     rows = con.execute("SELECT count(*) FROM stretch_crowding").fetchall()[0][0]
     n_nd = con.execute("SELECT count(*) FROM _rnd WHERE no_data").fetchall()[0][0]
-    stats = LevelStats(rows=rows, e_op=e_op, e_star=e_star, capped_routes=len(capped), infeasible=infeasible,
+    stats = LevelStats(ops=ops, rows=rows, e_op=e_op, e_star=e_star, capped_routes=len(capped), infeasible=infeasible,
                        s0_widened_share=widened / tot_y if tot_y else 0.0, s0_mismatch_share=s0,
                        dropped_rider_share=1 - kept_y / all_y if all_y else 0.0, no_data_routes=n_nd,
                        bands=bands, sizes=sizes)
     dq = [("rows", rows), ("capped_routes", len(capped)), ("s0_widened_share", stats.s0_widened_share),
           ("s0_mismatch_share", s0), ("dropped_rider_share", stats.dropped_rider_share),
           ("corridor_pairs", n_pairs), ("no_data_routes", n_nd)] + [(f"e_op_{k}", v) for k, v in e_op.items()] + [
-        (f"e_star_{k}", v) for k, v in e_star.items()]
+        (f"e_star_{k}", v) for k, v in e_star.items()] + [
+        (f"{k}_{f}", float(v)) for k, o in ops.items() for f, v in o.items()]
     _register(con, "_dq", pd.DataFrame(dq, columns=["name", "value"]).astype({"value": float}))
     con.execute("CREATE OR REPLACE TABLE dq_levels AS SELECT * FROM _dq")
     _print_report(stats)
@@ -874,8 +883,10 @@ def run_levels(con, paths, gate: bool = True, **_) -> LevelStats:
 
 def _print_report(st: LevelStats) -> None:
     print(f"levels: {st}")
-    if st.infeasible:
-        print(f"levels: capacity bounds make the published total unreachable for {st.infeasible}")
+    for k, o in st.ops.items():
+        print(f"levels: {k} E_op {o['e_op']:.2f}, E* {o['e_star']:.2f} (ceiling {o['ceiling']:.2f}, "
+              f"bound: {o['ceiling_bound']}), {o['capped_routes']} capped routes, unallocated "
+              f"{o['unallocated_share']:.2%} of published ridership")
     b = st.bands
     if not b.empty:
         for dt in ("weekday", "weekend"):

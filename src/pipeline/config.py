@@ -147,3 +147,4 @@ CORRIDOR_SIMPLIFY_M = 3.0      # Douglas-Peucker tolerance for corridor_geometry
 SUPPLY_WIDEN_MIN = 30          # S = 0 fallback: widen the base by this many minutes each side
 PLANNER_TABLES = ("canonical_stops", "segment_shapes", "places", "hub_alias", "passings", "service_hours",
                   "service_class", "runtime_factors", "bus_mix", "route_specs")
+E_SCALE_CEILING_MULT = 3.0     # R21 modelling assumption: E*_op <= 3 x E_op (Task 12 varies it); the total may then fall short
