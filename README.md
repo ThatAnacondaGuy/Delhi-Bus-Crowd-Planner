@@ -1,3 +1,5 @@
+> Note (18 Nov 2026): this project is being rebuilt on branch `phase1`; the design is in `docs/superpowers/specs/`. Older documents are in `docs/archive/`. This README will be rewritten before submission.
+
 # 🚌 Delhi Crowdedness-Aware Bus Journey Planner
 ### Transport Stack Hackathon 2026 — Phase 1 (Problem 2)
 **Delhi Transport Corporation (DTC) & DIMTS Cluster Bus Network**

@@ -59,3 +59,17 @@ data/processed/*
 !data/processed/*.csv
 !data/gps_aggregates/**
 !tests/fixtures/**
+
+# Binary artifacts stay ignored even inside the re-included directories
+tests/fixtures/**/*.parquet
+tests/fixtures/**/*.pkl
+tests/fixtures/**/*.geojson
+tests/fixtures/**/*.7z
+tests/fixtures/**/*.db
+tests/fixtures/**/*.duckdb
+data/gps_aggregates/**/*.parquet
+data/gps_aggregates/**/*.pkl
+data/gps_aggregates/**/*.geojson
+data/gps_aggregates/**/*.7z
+data/gps_aggregates/**/*.db
+data/gps_aggregates/**/*.duckdb
