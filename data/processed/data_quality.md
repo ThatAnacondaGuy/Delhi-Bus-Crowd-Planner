@@ -109,27 +109,27 @@ Rider-minute gate deviation: 0.0202% (limit 0.5%).
 | Name | Value |
 |---|---|
 | rows | 3,384,288 |
-| capped_routes | 1,155 |
+| capped_routes | 1,255 |
 | s0_widened_share | 0.0169 |
 | s0_mismatch_share | 0.0072 |
 | dropped_rider_share | 0.0001 |
-| corridor_pairs | 13,582 |
+| corridor_pairs | 13,551 |
 | no_data_routes | 603 |
 | e_op_DTC | 34.8097 |
 | e_op_DIMTS | 77.1806 |
-| e_star_DTC | 69.8739 |
+| e_star_DTC | 104 |
 | e_star_DIMTS | 232 |
 | DTC_e_op | 34.8097 |
-| DTC_e_star | 69.8739 |
+| DTC_e_star | 104 |
 | DTC_ceiling | 104 |
-| DTC_ceiling_bound | 0.0000 |
-| DTC_capped_routes | 746 |
-| DTC_unallocated_share | 0.0000 |
+| DTC_ceiling_bound | 1.0000 |
+| DTC_capped_routes | 845 |
+| DTC_unallocated_share | 0.5775 |
 | DIMTS_e_op | 77.1806 |
 | DIMTS_e_star | 232 |
 | DIMTS_ceiling | 232 |
 | DIMTS_ceiling_bound | 1.0000 |
-| DIMTS_capped_routes | 409 |
-| DIMTS_unallocated_share | 0.5003 |
+| DIMTS_capped_routes | 410 |
+| DIMTS_unallocated_share | 0.7199 |
 
-The E* ceiling is 3 x E_op. DTC: ceiling does not bind, unallocated 0.0%. Cluster: ceiling binds, unallocated 50.0% of published ridership.
+The E* ceiling is 3 x E_op. DTC: ceiling binds, unallocated 57.8%. Cluster: ceiling binds, unallocated 72.0% of published ridership.
