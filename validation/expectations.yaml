@@ -1,0 +1,279 @@
+# Pre-registered expectations. Committed before any model output exists (18 Nov 2026).
+# Corridors chosen from external evidence only (docs/superpowers/specs/2026-11-18-phase1-research-notes.md, section 1).
+# Stop names are exact stop_name values from the real GTFS stops.txt; research-note names that do not
+# exist exactly were dropped. Misses are reported, not tuned away.
+peaks:
+  am:
+  - 8
+  - 10
+  pm:
+  - 17
+  - 20
+weekend:
+  lower: true
+  flatter: true
+  later_peak: true
+radial:
+  inbound_am: true
+  outbound_pm: true
+  inbound_definition: towards the terminal nearer CP/ITO
+corridor_hit_rule: A corridor counts as a hit if at least one of its mapped stretches is in the network's
+  top decile of weekday crowded rider-minutes per km in its stated peak window (or either peak if none
+  is stated). Hits are reported by evidence grade. Misses are reported, not tuned away.
+corridors:
+- name: Ambedkar Nagar/Khanpur – Chirag Delhi – Moolchand – Mathura Road – ITO – Delhi Gate – Old Delhi
+    (former BRT Corridor 1)
+  grade: strong
+  peak:
+  - am
+  direction: null
+  gtfs_stop_names:
+  - Ambedkar Nagar Terminal
+  - Khanpur Ambedkar Nagar
+  - Pushp Vihar
+  - Chirag Delhi
+  - Siri Fort Road
+  - Mool Chand
+  - Defence Colony
+  - Bhogal (Jungpura)
+  - Pragati Maidan (Bhairon Marg)
+  - ITO BSZ Marg (Ram Charan Aggarwal Chowk)
+  - DELHI GATE
+  - Darya Ganj
+  - Mori Gate Terminal
+  sources:
+  - https://www.itdp.in/wp-content/uploads/2014/08/Delhi-HCBS-Institutional-Reform.pdf
+  - https://www.sgarchitects.in/images/research/pt/BRTDesign.pdf
+  - https://www.cseindia.org/content/downloadreports/52
+  - https://aamaadmiparty.org/press-release/dtc-buses-in-delhi-in-shambles-people-waiting-for-hours-at-bus-stops-a-common-sight-saurabh-bharadwaj/
+  - https://www.millenniumpost.in/delhi/aap-hits-out-at-bjp-over-delhis-bus-blues-634113
+  - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
+  - https://old.ccs.in/internship_papers/2009/bus-transport-in-delhi-210.pdf
+  - https://www.indiaenvironmentportal.org.in/news-clippings/study-junks-govts-brt-logic
+- name: ITO/Mandi House – Vikas Marg – Laxmi Nagar – Preet Vihar – Karkardooma – Anand Vihar ISBT (plus
+    East Delhi links to Geeta Colony, Patparganj, Mayur Vihar)
+  grade: strong
+  peak:
+  - pm
+  direction: eastbound
+  gtfs_stop_names:
+  - Mandi House
+  - Laxmi Nagar X-ing
+  - Shakarpur (Vikas Marg)
+  - Nirman Vihar
+  - KarKarDooma Crossing
+  - Anand Vihar ISBT Main Road
+  - GEETA COLONY
+  - Mayur Vihar Phase-1 Metro Station
+  sources:
+  - https://www.etvbharat.com/en/bharat/delhis-public-transport-in-disarray-as-bus-shortage-worsens-ahead-of-diwali-enn25101601961
+  - https://aamaadmiparty.org/press-release/dtc-buses-in-delhi-in-shambles-people-waiting-for-hours-at-bus-stops-a-common-sight-saurabh-bharadwaj/
+  - https://www.millenniumpost.in/delhi/aap-hits-out-at-bjp-over-delhis-bus-blues-634113
+  - https://www.sgarchitects.in/images/research/pt/BRTDesign.pdf
+  - https://delhiplanning.delhi.gov.in/sites/default/files/Planning/generic_multiple_files/59_79_transport.pdf
+  - https://www.timeout.com/delhi/news/56-women-only-electric-bus-services-are-now-running-in-delhi-082126
+- name: Ring Road (Mudrika / Teevra Mudrika loop), including TRIPP's Moolchand–LSR College–Nehru Place
+    spur
+  grade: moderate
+  peak:
+  - am
+  - pm
+  direction: null
+  gtfs_stop_names:
+  - ISBT Kashmere Gate Ring Road
+  - RajGhat Ring Road
+  - ITO Ring Road
+  - ISBT Sarai Kale Khan
+  - Maharani Bagh
+  - Ashram Chowk
+  - Lajpat Nagar (Ring Road)
+  - Mool Chand
+  - Lady Shri Ram College
+  - Kailash Colony
+  - South Extension
+  - AIIMS Ring Road
+  - Dhaula Kuan (Ring Road)
+  - Naraina Village (Ring Road)
+  - Rajouri Garden Ring Road
+  - Punjabi Bagh Ring Road
+  - Azadpur Terminal
+  sources:
+  - https://www.downtoearth.org.in/energy/dtc-pilots-one-bus-route-design-to-demonstrate-improved-services-and-passengers
+  - https://www.sgarchitects.in/images/research/pt/BRTDesign.pdf
+  - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
+  - https://en.wikipedia.org/wiki/Mudrika_Seva
+  - https://www.timeout.com/delhi/news/56-women-only-electric-bus-services-are-now-running-in-delhi-082126
+- name: 'Mehrauli–Badarpur (MB) Road: Saket – Khanpur – Sangam Vihar/Hamdard Nagar – Tughlakabad – Badarpur'
+  grade: moderate
+  peak:
+  - am
+  direction: null
+  gtfs_stop_names:
+  - Lado Sarai Crossing
+  - Saket Crossing
+  - Batra Hospital (Satya Narayan Mandir)
+  - Sangam Vihar
+  - Tuglakabad Fort
+  - Pul Pehladpur (Badarpur)
+  sources:
+  - https://www.freepressjournal.in/india/delhi-people-block-mb-road-damage-dtc-buses-for-not-being-allowed-to-board-amid-covid-restrictions
+  - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
+  - https://delhiplanning.delhi.gov.in/sites/default/files/Planning/generic_multiple_files/59_79_transport.pdf
+  - https://aamaadmiparty.org/press-release/dtc-buses-in-delhi-in-shambles-people-waiting-for-hours-at-bus-stops-a-common-sight-saurabh-bharadwaj/
+  - https://www.downtoearth.org.in/governance/to-catch-a-delhi-bus-63619
+- name: Outer Ring Road (Outer/Bahri Mudrika), especially Nehru Place – IIT – Munirka and Janakpuri –
+    Peeragarhi – Madhuban Chowk – Mukarba Chowk
+  grade: moderate
+  peak:
+  - pm
+  direction: null
+  gtfs_stop_names:
+  - Nehru Place
+  - Savitri Cinema
+  - IIT Gate
+  - MUNIRKA METRO STATION
+  - District Centre Outer Ring Road
+  - PERAGARHI OUTER RING ROAD
+  - Mangol Pur School (Outer Ring Road)
+  - Madhuban Chowk Outer Ring Road
+  - Jahangir Puri Crossing
+  - Mukarba Chowk ORR
+  sources:
+  - https://thedelhiwalla.blog/2015/01/07/city-hangout-mudrika-bus-route-ring-road/
+  - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
+  - https://www.millenniumpost.in/delhi/lane-discipline-enforcement-starts-as-long-queues-seen-at-stops-and-traffic-crawls-7-bus-drivers-fined-473052
+  - https://delhiplanning.delhi.gov.in/sites/default/files/Planning/generic_multiple_files/59_79_transport.pdf
+  - https://buspe.app/
+  - https://www.timeout.com/delhi/news/56-women-only-electric-bus-services-are-now-running-in-delhi-082126
+- name: 'Mathura Road: Ashram – Sarita Vihar – Badarpur Border'
+  grade: moderate
+  peak:
+  - am
+  - pm
+  direction: null
+  gtfs_stop_names:
+  - Ashram Chowk
+  - Sarita Vihar Xing
+  - Apollo Hospital
+  - Sarita Vihar
+  - Badarpur Village
+  - Badarpur /Jaitpur Crossing
+  - Badarpur Border (T)
+  sources:
+  - https://www.sgarchitects.in/images/research/pt/BRTDesign.pdf
+  - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
+  - https://en.wikipedia.org/wiki/Badarpur,_Delhi
+  - https://buspe.app/
+- name: 'North-East Delhi: Wazirabad Road / Pusta Road (Khajuri Khas – Bhajanpura – Sonia Vihar – Karawal
+    Nagar) and GT Road Shahdara'
+  grade: weak
+  peak:
+  - am
+  - pm
+  direction: null
+  gtfs_stop_names:
+  - Gurudwara Nanak Sar Crossing (Signature Bridge)
+  - Khajuri (Wazirabad Road)
+  - Khajuri Khas
+  - Bhajanpura
+  - Sonia Vihar
+  - Karawal Nagar Terminal
+  - Gokul Puri Terminal
+  - Loni Gol Chakkar
+  - Shastri Park GT Road
+  - Seelampur Gt Road
+  - Dilshad Garden GT Road
+  sources:
+  - https://www.deccanherald.com/amp/story/archives%2Fnot-enough-buses-for-delhiites-490418.html
+  - https://www.deccanherald.com/archives/people-hang-packed-buses-rural-2206044
+  - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
+  - https://delhiplanning.delhi.gov.in/sites/default/files/Planning/generic_multiple_files/59_79_transport.pdf
+  - https://aamaadmiparty.org/press-release/dtc-buses-in-delhi-in-shambles-people-waiting-for-hours-at-bus-stops-a-common-sight-saurabh-bharadwaj/
+- name: 'GT Karnal Road / GT Road north: Narela – Alipur – Mukarba Chowk – Jahangirpuri – Azadpur – Rana
+    Pratap Bagh – Malkaganj – Mori Gate/ISBT – Old Delhi'
+  grade: weak
+  peak:
+  - am
+  - pm
+  direction: null
+  gtfs_stop_names:
+  - Mori Gate Terminal
+  - IP College (GT Road)
+  - Roop Nagar (GT Road)
+  - Rana Pratap Bagh
+  - Kewal Park
+  - Jahangirpuri Metro Station GT Road
+  - Libas Pur GT Road
+  - Alipur GT Road
+  - Narela Terminal
+  sources:
+  - https://www.sgarchitects.in/images/research/pt/BRTDesign.pdf
+  - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
+  - https://delhiplanning.delhi.gov.in/sites/default/files/Planning/generic_multiple_files/59_79_transport.pdf
+  - https://www.etvbharat.com/en/!bharat/462-cluster-buses-removed-only-7000-buses-running-for-40-lakh-delhi-commuters-enn25042904069
+  - https://transport.delhi.gov.in/sites/default/files/Transport/circulars-orders/public_notice_route_rationalization.pdf
+- name: 'Najafgarh Road: Najafgarh – Dwarka Mor – Uttam Nagar – Janakpuri – Tilak Nagar – Subhash Nagar
+    – Rajouri Garden – Moti Nagar – Karol Bagh'
+  grade: weak
+  peak:
+  - am
+  - pm
+  direction: null
+  gtfs_stop_names:
+  - Najafgarh Terminal
+  - Kakrola Crossing (Najafgarh Road)
+  - Dwarka crossing
+  - Nawada
+  - Uttam Nagar (Najafgarh Road)
+  - JANAK PURI DISTRICT CENTRE (Najafghar Road)
+  - Tilak Nagar Crossing (Najafgarh Road)
+  - SUBHASH NAGAR XING
+  - Rajouri Garden
+  - Moti Nagar
+  - Karol Bagh Terminal
+  sources:
+  - https://www.thequint.com/news/india/delhi-bus-lanes-fine-all-you-need-to-know
+  - https://transport.delhi.gov.in/sites/default/files/Transport/circulars-orders/public_notice_route_rationalization.pdf
+  - https://www.thehansindia.com/posts/index/National/2019-02-23/City-govt-launches-1st-phase-of-route-rationalisation/500245
+  - https://thepatriot.in/?p=18660
+  - https://www.timeout.com/delhi/news/56-women-only-electric-bus-services-are-now-running-in-delhi-082126
+- name: 'Rohtak Road: Tikri Border – Mundka – Nangloi – Peeragarhi – Madipur – Punjabi Bagh – Zakhira
+    – Sarai Rohilla (toward Karol Bagh/Shivaji Terminal)'
+  grade: weak
+  peak:
+  - am
+  - pm
+  direction: null
+  gtfs_stop_names:
+  - Tikri Border
+  - Mundka Village
+  - Nangloi Metro Station
+  - NANGLOI DEPOT
+  - Peera Garhi Chowk
+  - Punjabi Bagh Terminal (Rohtak Road)
+  - Ashok Park  (Rohtak Road)
+  - Zakhira (Rohtak Road)
+  - Sarai Rohilla (Rohtak Road)
+  sources:
+  - https://www.sgarchitects.in/images/research/pt/BRTDesign.pdf
+  - https://delhiplanning.delhi.gov.in/sites/default/files/Planning/generic_multiple_files/59_79_transport.pdf
+gps_stoptime:
+  rule: rho >= 0.3 overall and rho > 0 on every tested route
+  rho_min: 0.3
+  per_route_rho_gt: 0.0
+  source: design 5.5
+published_checks:
+  dtc_bus_km:
+    published_per_day: 501000
+    tolerance: 0.2
+    band:
+    - 400800
+    - 601200
+    year: 2025-26
+    source: 'Economic Survey of Delhi 2025-26, ch. 12: https://delhiplanning.delhi.gov.in/sites/default/files/Planning/12_chapter_12_transport.pdf'
+  load_factor:
+    band:
+    - 0.78
+    - 0.89
+    note: DTC 88-89%, cluster 78%; definitions differ from ours, rough check only
+    source: 'Economic Survey of Delhi 2025-26, ch. 12: https://delhiplanning.delhi.gov.in/sites/default/files/Planning/12_chapter_12_transport.pdf'
