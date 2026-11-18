@@ -552,19 +552,25 @@ def _rider_cells(con, skip=()) -> None:
         GROUP BY route_id, seq, j"""))
 
 
-def _gps_rho(con) -> bool:
-    """Task 13's gps_route_hour(route_id, hour, rho), if it exists; otherwise rho = 1."""
+def _gps_rho(con) -> str | None:
+    """How the GPS table is read: 'model' (Task 13: rho_model per route x hour x day type), 'plain' (a bare
+    gps_route_hour(route_id, hour, rho)), or None (no table: rho = 1)."""
     if not _has(con, "gps_route_hour"):
-        return False
+        return None
     cols = {r[0] for r in con.execute("DESCRIBE gps_route_hour").fetchall()}
-    return {"route_id", "hour", "rho"} <= cols
+    if {"route_id", "hour", "day_type", "rho_model"} <= cols:
+        return "model"
+    return "plain" if {"route_id", "hour", "rho"} <= cols else None
 
 
 def _cells(con, nd: pd.DataFrame) -> None:
     """_cell: one row per (route, stretch, day type, window) with riders or scheduled buses, the supply tier
     that applied (4: schedule, widened +-30, route-hour, none), and l = riders per bus."""
     _register(con, "_nd", nd)
-    rho = _gps_rho(con)
+    mode = _gps_rho(con)
+    rho = mode is not None
+    col = "rho_model" if mode == "model" else "rho"
+    gjoin = " AND g.day_type = j.day_type" if mode == "model" else ""
     con.execute(f"""
         CREATE OR REPLACE TEMP TABLE _cell AS
         WITH j AS (
@@ -572,12 +578,12 @@ def _cells(con, nd: pd.DataFrame) -> None:
                    coalesce(y.tickets, 0) AS tickets, coalesce(s.s_base, 0) AS s_base, coalesce(s.s_wide, 0) AS s_wide
             FROM _ry y FULL OUTER JOIN _sup s USING (route_id, seq, day_type, w)),
         k AS (
-            SELECT j.*, n.n_days, coalesce(h.rh, 0) AS rh, {'coalesce(g.rho, 1.0)' if rho else '1.0'} AS rho,
-                   {'g.rho IS NOT NULL' if rho else 'false'} AS has_gps
+            SELECT j.*, n.n_days, coalesce(h.rh, 0) AS rh, {f'least(1.0, coalesce(g.{col}, 1.0))' if rho else '1.0'} AS rho,
+                   {f'g.{col} IS NOT NULL' if rho else 'false'} AS has_gps
             FROM j JOIN _pair USING (route_id, seq)
             JOIN _nd n ON n.day_type = j.day_type AND n.w = j.w
             LEFT JOIN _rh h ON h.route_id = j.route_id AND h.h = j.w // 60
-            {"LEFT JOIN gps_route_hour g ON g.route_id = j.route_id AND g.hour = j.w // 60" if rho else ""}
+            {f"LEFT JOIN gps_route_hour g ON g.route_id = j.route_id AND g.hour = j.w // 60{gjoin}" if rho else ""}
             WHERE n.n_days > 0),
         t AS (
             SELECT k.*, CASE WHEN s_base > 0 THEN s_base WHEN sum_y > 0 AND s_wide > 0 THEN s_wide

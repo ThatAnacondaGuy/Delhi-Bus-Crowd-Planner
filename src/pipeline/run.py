@@ -13,6 +13,7 @@ STAGES = {
     "clean": "src.pipeline.clean:run",
     "resolve": "src.pipeline.resolve:run",
     "network": "src.pipeline.network:run_network",
+    "gps": "src.pipeline.gps:run",
     "loads": "src.pipeline.loads:run_loads",
     "operator": "src.pipeline.operator:run",
     "validate": "src.pipeline.validate:run",
@@ -26,6 +27,7 @@ GTFS_FILES = ("routes.txt", "trips.txt", "stop_times.txt", "stops.txt")
 STAGE_INPUTS = {
     "clean": lambda p: {"tickets_csv": p.tickets_csv},
     "resolve": lambda p: {f"gtfs_{f.removesuffix('.txt')}": p.gtfs_dir / f for f in GTFS_FILES},
+    "gps": lambda p: {"gps_aggregates": p.gps_aggregates / "gps_route_hour.csv"},
 }
 
 

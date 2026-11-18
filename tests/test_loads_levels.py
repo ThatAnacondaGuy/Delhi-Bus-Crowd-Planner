@@ -217,6 +217,19 @@ def test_gps_rho_applies_when_table_exists(con, tmp_path, toy_gtfs_dir):
         == "schedule"
 
 
+def test_gps_rho_model_by_day_type_and_schedule_only(con, tmp_path, toy_gtfs_dir):
+    paths = build(con, tmp_path, toy_gtfs_dir, [a2b(DAY, "08:00")])
+    con.execute("""CREATE TABLE gps_route_hour AS
+        SELECT * FROM (VALUES (101::BIGINT, 8, 'weekday', 0.5, 'gps'), (101::BIGINT, 8, 'weekend', 0.25, 'gps'),
+                              (101::BIGINT, 7, 'weekday', NULL, 'schedule_only')) t(route_id, hour, day_type, rho_model, source)""")
+    con.execute("ALTER TABLE gps_route_hour ADD COLUMN rho DOUBLE")
+    loads.run_levels(con, paths)
+    r = cr(con, "route_id=101 AND seq=1 AND day_type='weekday' AND window_start_min=480").iloc[0]
+    assert r.buses == 3 and r.bus_source == "gps"            # rho_model 0.5 on 6 scheduled buses
+    r = cr(con, "route_id=101 AND seq=1 AND day_type='weekday' AND window_start_min=420")
+    assert (r.bus_source == "schedule").all() or r.empty     # NULL rho_model: rho = 1, flagged schedule
+
+
 def test_outputs_and_planner_export(con, tmp_path, toy_gtfs_dir):
     paths = build(con, tmp_path, toy_gtfs_dir, [a2b(DAY, "08:00") for _ in range(3)])
     loads.run_levels(con, paths)
