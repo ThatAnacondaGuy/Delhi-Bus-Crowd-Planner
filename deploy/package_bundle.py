@@ -87,12 +87,17 @@ def _clean_manifest(src: Path, dst: Path) -> None:
 def build(out_dir, processed=None) -> list[Path]:
     """Copy the allow-listed aggregates from `processed` (default data/processed) into `out_dir`; return the files.
 
-    Raises FileNotFoundError when a file the API needs is missing and ValueError when the audit finds a problem."""
+    `out_dir` must not exist or must be empty, so a failed audit only ever removes what this call created.
+    Raises FileNotFoundError when a file the API needs is missing and ValueError when `out_dir` is not empty or the
+    audit finds a problem."""
     src = Path(processed) if processed is not None else Paths.default().processed
     out = Path(out_dir)
     missing = sorted(r for r in REQUIRED if not (src / r).is_file())
     if missing:
         raise FileNotFoundError(f"{src}: missing {', '.join(missing)}")
+    existed = out.exists()
+    if existed and (not out.is_dir() or any(out.iterdir())):
+        raise ValueError(f"{out}: not empty; give an empty or new folder")
     out.mkdir(parents=True, exist_ok=True)
     copied = []
     for rel in sorted(ALLOWED):
@@ -108,7 +113,11 @@ def build(out_dir, processed=None) -> list[Path]:
         copied.append(d)
     problems = audit(out)
     if problems:
-        shutil.rmtree(out)
+        if existed:  # the caller's own (empty) folder stays; only what this call put in it goes
+            for child in out.iterdir():
+                shutil.rmtree(child) if child.is_dir() else child.unlink()
+        else:
+            shutil.rmtree(out)
         raise ValueError("bundle refused: " + "; ".join(problems))
     return copied
 

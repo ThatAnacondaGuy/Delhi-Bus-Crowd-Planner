@@ -118,6 +118,31 @@ def test_build_refuses_to_publish_a_forbidden_column(processed, tmp_path):
         package_bundle.build(tmp_path / "out", src)
 
 
+def test_build_refuses_a_non_empty_out_dir_and_leaves_it_untouched(processed, tmp_path):
+    out = tmp_path / "existing"
+    out.mkdir()
+    keep = out / "notes.txt"
+    keep.write_text("not mine")
+    with pytest.raises(ValueError, match="not empty"):
+        package_bundle.build(out, processed)
+    assert keep.read_text() == "not mine" and files(out) == [keep]
+
+
+def test_failed_audit_removes_only_what_it_created(processed, tmp_path):
+    src = tmp_path / "processed"
+    shutil.copytree(processed, src)
+    pd.DataFrame({"route_id": [1], "ticket_id": [7]}).to_parquet(src / "operator_trips.parquet")
+    fresh = tmp_path / "fresh"
+    with pytest.raises(ValueError, match="ticket_id"):
+        package_bundle.build(fresh, src)
+    assert not fresh.exists()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(ValueError, match="ticket_id"):
+        package_bundle.build(empty, src)
+    assert empty.is_dir() and not list(empty.iterdir())
+
+
 def test_api_starts_from_the_bundle_alone(bundle, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(bundle))
     with TestClient(create_app()) as c:
