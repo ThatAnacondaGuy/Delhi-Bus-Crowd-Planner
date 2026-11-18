@@ -52,8 +52,9 @@ def toy(tmp_path_factory):
                        crowded_rider_min_removed=v, riders_moved_down=5.0, max_load_section="A to B",
                        peak_load_factor=1.1, evidence_share=0.2, flags="") for o, d, t, v in ops]
                  ).to_parquet(out / "operator_trips.parquet", index=False)
-    (out / "validation_report.json").write_text(json.dumps({"headline_numbers": {"clean_days": 29,
-                                                                                  "tickets_resolved": 1234}}))
+    (out / "validation_report.json").write_text(json.dumps({"headline_numbers": {
+        "clean_days": 29, "tickets_resolved": 1234, "published_ridership_dtc": 2429000,
+        "published_ridership_dimts": 1530000, "e_dtc": 34.81, "e_dimts": 77.18}}))
     f = out / "in.txt"
     f.write_text("x")
     manifest.mark_done("loads", {"x": str(f)}, [], path=out / "manifest.json")
@@ -163,6 +164,15 @@ def test_health_counts_match_outputs(client, toy):
     assert h["counts"]["operator_trips"] == 4
     assert h["counts"]["routes"] == pd.read_parquet(toy.processed / "planner" / "route_specs.parquet").shape[0]
     assert h["stages_done"] == ["loads"] and h["data"]["ticket_days"] == 29
+
+
+def test_health_app_riders_one_in(client):
+    from src.api.main import app_riders_one_in
+    assert client.get("/v1/health").json()["app_riders_one_in"] == 44
+    head = {"published_ridership_dtc": 2429000, "published_ridership_dimts": 1530000, "e_dtc": 34.81, "e_dimts": 77.18}
+    assert app_riders_one_in(head) == 44
+    for bad in ({}, {**head, "e_dtc": None}, {**head, "e_dimts": 0}, {**head, "published_ridership_dtc": "x"}):
+        assert app_riders_one_in(bad) is None
 
 
 def test_cors_get_any_origin_no_credentials(client):

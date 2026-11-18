@@ -91,6 +91,18 @@ def _num(x, nd=2):
     return None if pd.isna(x) else round(float(x), nd)
 
 
+def app_riders_one_in(head: dict) -> int | None:
+    """About 1 in N riders is in the app data: published ridership over the ridership the app tickets stand for,
+    summed over both operators. None when the report lacks any of the four numbers."""
+    try:
+        pub = [float(head[f"published_ridership_{op}"]) for op in ("dtc", "dimts")]
+        e = [float(head[f"e_{op}"]) for op in ("dtc", "dimts")]
+        app = sum(p / x for p, x in zip(pub, e))
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return None
+    return round(sum(pub) / app) if app > 0 else None
+
+
 class State:
     """Everything loaded once at start-up."""
 
@@ -151,6 +163,7 @@ class State:
                 "tickets_resolved": head.get("tickets_resolved"),
                 "gps_available": head.get("gps_available"),
             },
+            "app_riders_one_in": app_riders_one_in(head),
             "credit": CREDIT,
         }
 
