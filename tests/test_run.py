@@ -85,3 +85,14 @@ def test_gtfs_change_reruns_resolve_only(tmp_path, monkeypatch):
     (gtfs / "stops.txt").write_text("changed\n")
     run.main(["--until", "resolve"], paths=paths)
     assert calls == ["c", "r", "r"]
+
+
+def test_render_stage_is_stale_when_a_template_or_the_report_changes(tmp_path):
+    base = Paths.default()
+    paths = Paths(tmp_path, base.gtfs_dir, base.tickets_csv, base.gps_archive, base.gps_aggregates, tmp_path / "out")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "X.tmpl.md").write_text("{{run_id}}")
+    ins = run.stage_inputs(paths, "render")
+    assert ins["validation_report"] == str(paths.processed / "validation_report.json")
+    assert ins["template_X.tmpl.md"] == str(tmp_path / "docs" / "X.tmpl.md")
+    assert set(run.stage_inputs(paths, "validate")) <= set(ins)

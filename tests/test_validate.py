@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from src.pipeline import loads, validate
-from src.pipeline.config import PUBLISHED_RIDERSHIP, Source
+from src.pipeline.config import PUBLISHED_RIDERSHIP, Source, WindowSpec
 from src.pipeline.errors import GateError
 from tests.test_loads_levels import DAY, a2b, build
 
@@ -195,3 +195,43 @@ def test_chance_baseline_is_high_for_many_stretches_and_low_for_few():
     assert r["expected_hits"] == pytest.approx(big + small)
     again = validate.chance_expected_hits(df, [(100, ["am"]), (1, ["am"])], {"am": (480, 600)}, draws=1000, seed=1)
     assert again == r                                        # seeded: reproducible
+
+
+def test_published_bands_come_from_expectations(con, tmp_path, toy_gtfs_dir, monkeypatch):
+    import dataclasses
+    from src.pipeline.expectations import load_expectations
+    exp = dataclasses.replace(load_expectations(Path(__file__).parent.parent / "validation" / "expectations.yaml"),
+                              dtc_bus_km_published=777_000.0, dtc_bus_km=(1.0, 2.0), load_factor_band=(0.11, 0.22))
+    monkeypatch.setattr(validate, "load_expectations", lambda _p: exp)
+    paths = toy_report(con, tmp_path, toy_gtfs_dir, monkeypatch)
+    rep = validate.run(con, paths)
+    bk, lf = rep["independent"]["dtc_bus_km"], rep["independent"]["load_factor"]
+    assert bk["published"] == 777_000.0 and bk["band"] == [1.0, 2.0] and lf["band"] == [0.11, 0.22]
+    assert rep["headline_numbers"]["dtc_bus_km_published"] == 777_000.0
+    md = (paths.processed / "validation_report.md").read_text()
+    assert "777,000" in md and "0.11-0.22" in md
+    assert "501,000" not in md and "0.78-0.89" not in md
+
+
+def test_corridor_headline_is_one_clean_sentence(con, tmp_path, toy_gtfs_dir, monkeypatch):
+    paths = toy_report(con, tmp_path, toy_gtfs_dir, monkeypatch)
+    rep = validate.run(con, paths)
+    h = rep["headline_numbers"]
+    line = next(x for x in (paths.processed / "validation_report.md").read_text().splitlines()
+                if x.startswith("- Pre-registered corridors"))
+    assert line.count("(") == line.count(")")                 # no stray bracket
+    assert f"{h['corridor_hits_weak']} of {h['corridors_weak']} weak;" in line
+    assert "the primary rule's result" not in line.split("weak")[0]
+
+
+def test_bus_km_weights_come_from_the_window_config(con, tmp_path, toy_gtfs_dir, monkeypatch):
+    toy_report(con, tmp_path, toy_gtfs_dir, monkeypatch)
+
+    def weekday_bus_km():
+        validate._scx(con)
+        return con.execute("SELECT sum(bus_km) FROM _scx WHERE day_type = 'weekday'").fetchone()[0]
+
+    base = weekday_bus_km()
+    assert base > 0
+    monkeypatch.setattr(validate, "WINDOWS", {**validate.WINDOWS, "weekday": WindowSpec(60, 90)})
+    assert weekday_bus_km() == pytest.approx(2 * base)

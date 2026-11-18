@@ -20,6 +20,7 @@ def test_schema():
     assert e.corridors[1].peak == ["pm"]
     assert e.corridors[1].direction == "eastbound"
     assert e.dtc_bus_km == pytest.approx((400_800, 601_200))
+    assert e.dtc_bus_km_published == pytest.approx(501_000)
     assert e.load_factor_band == pytest.approx((0.78, 0.89))
     assert e.gps_stoptime_rho_min == pytest.approx(0.3)
     assert e.peaks == {"am": [8, 10], "pm": [17, 20]}

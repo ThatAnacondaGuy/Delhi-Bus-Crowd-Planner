@@ -651,13 +651,19 @@ def radial(con) -> dict:
             "windows": {"am": list(RADIAL_AM), "pm": list(RADIAL_PM)}}
 
 
+def _bus_km_weight_sql() -> str:
+    """SQL for a cell's share of a bus-trip: window step / base window (config.WINDOWS), per day type."""
+    wd, we = WINDOWS["weekday"], WINDOWS["weekend"]
+    return f"CASE WHEN c.day_type = 'weekday' THEN {wd.step_min}.0 / {wd.base_min} ELSE {we.step_min}.0 / {we.base_min} END"
+
+
 def _scx(con) -> None:
     """_scx: stretch_crowding with bus-km per cell (weighted as in coverage.csv) for the shares below."""
-    con.execute("""
+    con.execute(f"""
         CREATE OR REPLACE TEMP TABLE _scx AS
         SELECT c.route_id, c.short_name, c.operator, c.day_type, c.window_start_min, c.level, c.evidence, c.flags,
                c.people_mid, c.seats, c.rated_total, c.buses, c.tickets, c."E_r" AS e_r, c.app_riders,
-               c.buses * CASE WHEN c.day_type = 'weekday' THEN 30.0 / 90 ELSE 60.0 / 120 END
+               c.buses * {_bus_km_weight_sql()}
                  * coalesce(sh.length_m, 0) / 1000.0 AS bus_km,
                sh.length_m IS NULL AS no_shape
         FROM stretch_crowding c LEFT JOIN segment_shapes sh ON sh.route_id = c.route_id AND sh.seq = c.seq + 1""")
@@ -669,9 +675,9 @@ def full_allocation_load_factor(con) -> dict:
     cells with people on board capped at crush, as the map shows them."""
     _prepare_cells(con)
     _levels(con, "_lv_full", use_bound=False)
-    rows = con.execute("""
+    rows = con.execute(f"""
         WITH v AS (
-            SELECT c.operator, c.buses * 30.0 / 90 * coalesce(sh.length_m, 0) / 1000.0 AS bus_km, c.seats,
+            SELECT c.operator, c.buses * {WINDOWS["weekday"].step_min}.0 / {WINDOWS["weekday"].base_min} * coalesce(sh.length_m, 0) / 1000.0 AS bus_km, c.seats,
                    c."E_r" * c.app_riders / nullif(c.buses, 0) AS raw, c.people_mid
             FROM _lv_full c LEFT JOIN segment_shapes sh ON sh.route_id = c.route_id AND sh.seq = c.seq + 1
             WHERE c.day_type = 'weekday' AND c.level <> 'no_data' AND c.buses > 0)
@@ -714,11 +720,11 @@ def published(con, exp) -> dict:
     bus_km = {"model": rho_km, "scheduled": float(km[0]), "regular_and_office_only": rho_km_reg, "rho": rho,
               "rho_source": rho_source, "gps": has_gps,
               "passings": int(km[1]), "passings_without_shape": int(km[2]),
-              "published": 501_000.0, **published_check(rho_km, exp.dtc_bus_km)}
+              "published": exp.dtc_bus_km_published, **published_check(rho_km, exp.dtc_bus_km)}
     bus_km["basis"] = ("each scheduled trip's stretches once (one passing per trip per stop, stretch = stop k to k+1, "
                        "rings capped at n_stops-1), on the feed's single service day (one service_id), the per-day "
                        "basis of the published figure")
-    bus_km["implied_rho"] = 501_000.0 / bus_km["scheduled"] if bus_km["scheduled"] else None
+    bus_km["implied_rho"] = bus_km["published"] / bus_km["scheduled"] if bus_km["scheduled"] else None
     lf = con.execute("""
         SELECT operator, sum(bus_km * people_mid) / sum(bus_km * seats), sum(bus_km), count(*)
         FROM _scx WHERE day_type = 'weekday' AND people_mid IS NOT NULL AND bus_km > 0 GROUP BY ROLLUP(operator)
@@ -1037,6 +1043,9 @@ def headline(con, gates, exp_res, rep, pub, sens, diag, repro) -> dict:
         "dtc_bus_km_model": pub["dtc_bus_km"]["model"], "dtc_bus_km_scheduled": pub["dtc_bus_km"]["scheduled"],
         "dtc_rho_effective": pub["dtc_bus_km"]["rho"], "dtc_bus_km_published": pub["dtc_bus_km"]["published"],
         "dtc_bus_km_hit": pub["dtc_bus_km"]["hit"], "dtc_implied_rho": pub["dtc_bus_km"]["implied_rho"],
+        "dtc_bus_km_band_low": pub["dtc_bus_km"]["band"][0], "dtc_bus_km_band_high": pub["dtc_bus_km"]["band"][1],
+        "load_factor_band_low": pub["load_factor"]["band"][0],
+        "load_factor_band_high": pub["load_factor"]["band"][1],
         "load_factor_model": pub["load_factor"]["model"], "load_factor_hit": pub["load_factor"]["hit"],
         "load_factor_dtc": pub["load_factor"]["by_operator"].get("DTC", {}).get("load_factor"),
         "load_factor_dimts": pub["load_factor"]["by_operator"].get("DIMTS", {}).get("load_factor"),
@@ -1072,6 +1081,10 @@ def _tbl(headers, rows) -> str:
     out = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
     out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
     return "\n".join(out)
+
+
+def _band(lo, hi) -> str:
+    return f"{lo:g}-{hi:g}"
 
 
 def _yn(b) -> str:
@@ -1111,16 +1124,17 @@ def render_md(rep: dict) -> str:
       f"{_pct(h['unchanged_level_share_leave_one_out'])} unchanged.")
     a(f"- Pre-registered corridors: {h['corridor_hits_strong']} of {h['corridors_strong']} strong, "
       f"{h['corridor_hits_moderate']} of {h['corridors_moderate']} moderate, {h['corridor_hits_weak']} of "
-      f"{h['corridors_weak']} weak), the primary rule's result: "
-      f"{h['corridor_hits_total']} of {h['corridors_total']} in all, but that rule turned out to be weak: "
+      f"{h['corridors_weak']} weak; {h['corridor_hits_total']} of {h['corridors_total']} in all. That primary rule "
+      f"turned out to be weak: "
       f"{_num(h['corridor_hits_chance_expected'], 1)} of {h['corridors_total']} hits would be expected if the same "
       f"number of stretches per corridor were drawn at random ({h['corridor_hits_chance_method']}). The informative "
       f"readings are the enrichment (on average {_pct(h['corridor_top_decile_share'])} of mapped stretches are in the "
       f"top decile, against {_pct(h['corridor_top_decile_chance'], 0)} at random) and the stricter both-ends mapping "
       f"({h['corridor_hits_both_ends']} of {h['corridors_total']}).")
-    a(f"- Published figures: modelled DTC bus-km {_num(h['dtc_bus_km_model'], 0)} per day against 501,000 "
-      f"({_yn(h['dtc_bus_km_hit'])}); modelled load factor {_num(h['load_factor_model'], 3)} against the "
-      f"0.78-0.89 band ({_yn(h['load_factor_hit'])}).")
+    a(f"- Published figures: modelled DTC bus-km {_num(h['dtc_bus_km_model'], 0)} per day against "
+      f"{_num(h['dtc_bus_km_published'], 0)} ({_yn(h['dtc_bus_km_hit'])}); modelled load factor "
+      f"{_num(h['load_factor_model'], 3)} against the {_band(h['load_factor_band_low'], h['load_factor_band_high'])} "
+      f"band ({_yn(h['load_factor_hit'])}).")
     a(f"- Scheduled DTC bus-km is {_num(h['dtc_bus_km_scheduled'] / h['dtc_bus_km_published'], 2)} times the published "
       f"figure (implied share of trips run about {_num(h['dtc_implied_rho'], 2)} if the published figure is right). "
       + (f"The model applies the share of trips that ran, measured from GPS, which is "
@@ -1211,7 +1225,7 @@ def render_md(rep: dict) -> str:
       "GPS layer is in, GPS stop-time activity.\n")
     bk, lf = ind["dtc_bus_km"], ind["load_factor"]
     a(_tbl(["Check", "Model", "Published", "Band", "Result"], [
-        ("DTC bus-km per day (scheduled x rho)", _num(bk["model"], 0), "501,000",
+        ("DTC bus-km per day (scheduled x rho)", _num(bk["model"], 0), _num(bk["published"], 0),
          f"{bk['band'][0]:,.0f}-{bk['band'][1]:,.0f}", _yn(bk["hit"])),
         ("Fleet load factor (weekday passenger-km / seat-km)", _num(lf["model"], 3), "DTC 0.88-0.89, cluster 0.78",
          f"{lf['band'][0]:g}-{lf['band'][1]:g}", _yn(lf["hit"])),
@@ -1232,7 +1246,7 @@ def render_md(rep: dict) -> str:
       f"that no bus can carry are left unplaced) the weekday load factor is {_num(lf['model'], 3)}; with the "
       f"capacity bound off and the published ridership placed in full it is {_num(fa['all']['uncapped'], 3)} "
       f"({_num(fa['all']['capped_at_crush'], 3)} if people on board are still capped at crush), against the published "
-      f"0.78-0.89. Unallocated share of published ridership: DTC {_pct(h['unallocated_share_dtc'])}, cluster "
+      f"{_band(*lf['band'])}. Unallocated share of published ridership: DTC {_pct(h['unallocated_share_dtc'])}, cluster "
       f"{_pct(h['unallocated_share_dimts'])}. Published ridership, the GPS-measured trips that ran (DTC bus-km "
       f"{_num(bk['model'], 0)} against the published {_num(bk['published'], 0)}) and the crush capacity do not fit "
       f"together. The model never puts more than the crush load on a bus, so on capped routes the crowding shown is "
