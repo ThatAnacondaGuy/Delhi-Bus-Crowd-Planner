@@ -167,6 +167,8 @@ def test_report_has_headline_numbers(con, tmp_path, toy_gtfs_dir, monkeypatch):
         assert k in h, k
     assert h["pair_ratio_window"] == "0.4-2.5" and h["gps_available"] is False
     assert h["base_case_reproduced"] is True
+    for k in ("corridor_hits_chance_expected", "corridor_top_decile_share", "corridor_hits_both_ends"):
+        assert k in h, k
     assert set(rep) >= {"gates", "expectations", "repeatability", "independent", "sensitivity", "diagnostics",
                         "coverage_summary", "headline_numbers"}
     assert "capacity_minus_10" in rep["sensitivity"] and "ceiling_2x" in rep["sensitivity"]
@@ -181,3 +183,15 @@ def test_report_has_headline_numbers(con, tmp_path, toy_gtfs_dir, monkeypatch):
     # the stored tables are untouched by the variant runs
     assert con.execute("SELECT count(*) FROM stretch_crowding").fetchone()[0] == rep["reproduction"]["rows_stored"]
     assert rep["reproduction"]["exact"]
+
+
+def test_chance_baseline_is_high_for_many_stretches_and_low_for_few():
+    pairs = [f"p{i}" for i in range(200)]
+    df = pd.DataFrame([(p, 480, 1.0 + i * 0.01) for i, p in enumerate(pairs)],
+                      columns=["pair_id", "window_start_min", "rm_per_km"])
+    r = validate.chance_expected_hits(df, [(100, ["am"]), (1, ["am"])], {"am": (480, 600)}, draws=1000, seed=1)
+    big, small = r["per_corridor"]
+    assert big > 0.99 and 0.05 < small < 0.2                # 1 - 0.9^n; one stretch hits about 10% of the time
+    assert r["expected_hits"] == pytest.approx(big + small)
+    again = validate.chance_expected_hits(df, [(100, ["am"]), (1, ["am"])], {"am": (480, 600)}, draws=1000, seed=1)
+    assert again == r                                        # seeded: reproducible

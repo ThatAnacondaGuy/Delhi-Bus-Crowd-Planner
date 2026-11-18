@@ -9,13 +9,14 @@ This is a check of the model against things we can compare it with. No field cou
 - Route capacity bound: 1155 routes are scaled to bus capacity (746 DTC, 409 cluster).
 - Scale ceiling: the operator scale may not exceed 3 times E. For DTC the ceiling does not bind; the unallocated share of published DTC ridership is 0.0%. For the cluster operator the ceiling binds and 50.0% of its published ridership is unallocated: the model places only the rest on routes, so cluster loads are, if anything, understated.
 - Ticket-pair run-time window: observed / template ratios from 0.4-2.5 are used. With the wider 0.25-4 window the DTC 18:00 factor is 1.521 instead of 1.423 (08:00: 1.033 instead of 1.003).
-- Week to week: 74.3% of commuter-facing cells (rider-weighted) keep their level between two different weeks of the month; load correlation 0.713. Dropping one week from the full month leaves 94.2% unchanged.
-- Pre-registered corridors: 2 of 2 strong, 4 of 4 moderate, 4 of 4 weak (10 of 10 in all). The rule is easy to meet: a random set of stretches of the same size would hit with probability 100% on average, and on average 17.9% of the mapped stretches are in the top decile (10% at random), so the hits are weak evidence.
+- Week to week: 74.3% of commuter-facing cells (rider-weighted) keep their level between two different weeks of the month; load correlation 0.713. A week held out lands inside the sampling range in 62.2% of cells. Secondary, not independent (the runs share three weeks): dropping one week from the full month leaves 94.2% unchanged.
+- Pre-registered corridors: 2 of 2 strong, 4 of 4 moderate, 4 of 4 weak; the primary rule's result, 10 of 10 in all), but that rule turned out to be weak: 10.0 of 10 hits would be expected if the same number of stretches per corridor were drawn at random (seeded simulation, 2000 draws per corridor, seed 25, stretches drawn without replacement from the 13,181 weekday stretches with service). The informative readings are the enrichment (on average 17.9% of mapped stretches are in the top decile, against 10% at random) and the stricter both-ends mapping (6 of 10).
 - Published figures: modelled DTC bus-km 1,147,445 per day against 501,000 (miss; the schedule offers 2.29 times the published figure, an implied rho of 0.44); modelled load factor 0.493 against the 0.78-0.89 band (miss).
+- Scheduled DTC bus-km is 2.29 times the published figure (implied share of trips run about 0.44 if the published figure is right); until GPS-based trip counts are in, loads may be understated. The model figure counts each scheduled trip's segments once, on the feed's single service day, the same per-day basis as the published figure.
 - Routes whose last stretches depend on the alighting correction: 662.
 - Coverage: 93.2% of scheduled bus-km has a commuter-facing level, 4.0% rests on many tickets.
 - GPS layer: not available, so bus supply uses the schedule (rho = 1) and the GPS checks are marked not available; they are not counted as misses.
-- Run time of the validation stage: 36 s.
+- Run time of the validation stage: 40 s.
 
 ## A. Gates (a failure stops the run)
 
@@ -47,6 +48,8 @@ The rebuilt base case equals the stored output: 3,384,288 of 3,384,288 rows, lev
 ### The ten researched corridors
 
 A corridor is a hit when one of its mapped stretches is in the top decile of weekday crowded rider-minutes per km in its stated peak window. A stretch is mapped when either end's stop name is in the corridor's list (and, where a direction is stated, it heads that way); both-ends is shown as a stricter reading. With this many mapped stretches a hit is likely even by chance, so the share of mapped stretches in the top decile (10% would be chance) and the chance of a hit are shown too.
+
+The primary rule turned out to be weak: 10.0 of 10 hits are expected at random (seeded simulation, 2000 draws per corridor, seed 25, stretches drawn without replacement from the 13,181 weekday stretches with service). The informative readings are the enrichment (17.9% of mapped stretches in the top decile vs 10% at random) and the both-ends mapping (6 of 10).
 
 | Grade | Corridor | Peak | Mapped stretches | Result | Both ends only | Mapped stretches in top decile | Chance of a hit at random | Strongest mapped stretch | Its percentile |
 |---|---|---|---|---|---|---|---|---|---|

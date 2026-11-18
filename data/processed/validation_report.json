@@ -9,15 +9,15 @@
   },
   "rider_minutes": {
    "passed": true,
-   "deviation": 0.00020227134310824013,
+   "deviation": 0.0002022713431140133,
    "limit": 0.005,
    "rule": "stretch rider-minutes + excluded + moved = resolved-ticket rider-minutes"
   },
   "supply": {
    "passed": true,
-   "share": 0.0072479010869116725,
+   "share": 0.007247901086911665,
    "limit": 0.01,
-   "widened_share": 0.01692330721131322,
+   "widened_share": 0.0169233072113132,
    "rule": "rider volume with no scheduled bus after the fallback stays under 1%"
   },
   "run_times": {
@@ -67,8 +67,8 @@
    "am_share": 0.8662952646239555,
    "pm_share": 0.8384401114206128,
    "both_share": 0.7353760445682451,
-   "am_share_rider_weighted": 0.8198357509642209,
-   "pm_share_rider_weighted": 0.8490472286943291,
+   "am_share_rider_weighted": 0.819835750964221,
+   "pm_share_rider_weighted": 0.8490472286943292,
    "am_hit": true,
    "pm_hit": true,
    "hit": true,
@@ -115,7 +115,8 @@
       }
      },
      "best_stretch": "Sheikh Sarai Phase II / Shaheed Bhagat Singh College to Chirag Delhi",
-     "best_percentile": 0.9952859836580766
+     "best_percentile": 0.9952859836580766,
+     "chance_hit_simulated": 1.0
     },
     {
      "name": "ITO/Mandi House – Vikas Marg – Laxmi Nagar – Preet Vihar – Karkardooma – Anand Vihar ISBT (plus East Delhi links to Geeta Colony, Patparganj, Mayur Vihar)",
@@ -146,7 +147,8 @@
       }
      },
      "best_stretch": "ITO AGCR /  ITO to Delhi Secretariat",
-     "best_percentile": 0.9996909526384918
+     "best_percentile": 0.9996909526384918,
+     "chance_hit_simulated": 0.994
     },
     {
      "name": "Ring Road (Mudrika / Teevra Mudrika loop), including TRIPP's Moolchand–LSR College–Nehru Place spur",
@@ -189,7 +191,8 @@
       }
      },
      "best_stretch": "Dhaula Kuan (Ring Road) to R R Lines",
-     "best_percentile": 0.9980684539905741
+     "best_percentile": 0.9980684539905741,
+     "chance_hit_simulated": 1.0
     },
     {
      "name": "Mehrauli–Badarpur (MB) Road: Saket – Khanpur – Sangam Vihar/Hamdard Nagar – Tughlakabad – Badarpur",
@@ -220,7 +223,8 @@
       }
      },
      "best_stretch": "Asian Market to Saket Crossing",
-     "best_percentile": 0.9998428661219358
+     "best_percentile": 0.9998428661219358,
+     "chance_hit_simulated": 0.9995
     },
     {
      "name": "Outer Ring Road (Outer/Bahri Mudrika), especially Nehru Place – IIT – Munirka and Janakpuri – Peeragarhi – Madhuban Chowk – Mukarba Chowk",
@@ -251,7 +255,8 @@
       }
      },
      "best_stretch": "Madhuban Chowk Outer Ring Road to Saraswati  Vihar C Block",
-     "best_percentile": 0.9911921501970177
+     "best_percentile": 0.9911921501970177,
+     "chance_hit_simulated": 1.0
     },
     {
      "name": "Mathura Road: Ashram – Sarita Vihar – Badarpur Border",
@@ -294,7 +299,8 @@
       }
      },
      "best_stretch": "Sarita Vihar to Madanpur Khadar Crossing",
-     "best_percentile": 0.9974503592675578
+     "best_percentile": 0.9974503592675578,
+     "chance_hit_simulated": 1.0
     },
     {
      "name": "North-East Delhi: Wazirabad Road / Pusta Road (Khajuri Khas – Bhajanpura – Sonia Vihar – Karawal Nagar) and GT Road Shahdara",
@@ -337,7 +343,8 @@
       }
      },
      "best_stretch": "Shastri Park GT Road to Shyam Giri Mandir",
-     "best_percentile": 0.9862507856693903
+     "best_percentile": 0.9862507856693903,
+     "chance_hit_simulated": 1.0
     },
     {
      "name": "GT Karnal Road / GT Road north: Narela – Alipur – Mukarba Chowk – Jahangirpuri – Azadpur – Rana Pratap Bagh – Malkaganj – Mori Gate/ISBT – Old Delhi",
@@ -380,7 +387,8 @@
       }
      },
      "best_stretch": "Libas Pur GT Road to Swaroop Nagar GT Road",
-     "best_percentile": 0.9983002395117052
+     "best_percentile": 0.9983002395117052,
+     "chance_hit_simulated": 1.0
     },
     {
      "name": "Najafgarh Road: Najafgarh – Dwarka Mor – Uttam Nagar – Janakpuri – Tilak Nagar – Subhash Nagar – Rajouri Garden – Moti Nagar – Karol Bagh",
@@ -423,7 +431,8 @@
       }
      },
      "best_stretch": "Karol Bagh Terminal to Jhandewalan",
-     "best_percentile": 0.9956788183532369
+     "best_percentile": 0.9956788183532369,
+     "chance_hit_simulated": 1.0
     },
     {
      "name": "Rohtak Road: Tikri Border – Mundka – Nangloi – Peeragarhi – Madipur – Punjabi Bagh – Zakhira – Sarai Rohilla (toward Karol Bagh/Shivaji Terminal)",
@@ -466,7 +475,8 @@
       }
      },
      "best_stretch": "Madipur Village / CARI / P B Enclave to Madipur JJ Colony / MadiPur Metro Station",
-     "best_percentile": 0.9996136907981148
+     "best_percentile": 0.9996136907981148,
+     "chance_hit_simulated": 1.0
     }
    ],
    "by_grade": {
@@ -487,6 +497,25 @@
      "total": 10
     }
    },
+   "hits_both_ends": 6,
+   "chance": {
+    "method": "seeded simulation, 2000 draws per corridor, seed 25, stretches drawn without replacement from the 13,181 weekday stretches with service",
+    "expected_hits": 9.993500000000001,
+    "per_corridor": [
+     1.0,
+     0.994,
+     1.0,
+     0.9995,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ]
+   },
+   "top_decile_share": 0.17908577551740407,
+   "top_decile_chance": 0.09999999999999998,
    "top_quantile": 0.9,
    "windows": {
     "am": [
@@ -614,7 +643,7 @@
     "cells": 1999087,
     "changed": 104788,
     "unchanged_share": 0.9475820712155099,
-    "unchanged_share_rider_weighted": 0.933696089528578,
+    "unchanged_share_rider_weighted": 0.9336960895285781,
     "more_crowded": 43967,
     "less_crowded": 60821,
     "bands": {
@@ -630,7 +659,7 @@
       "cells": 1124931,
       "changed": 63522,
       "unchanged_share": 0.9435325366622486,
-      "unchanged_share_rider_weighted": 0.9229145005556969,
+      "unchanged_share_rider_weighted": 0.9229145005557058,
       "more_crowded": 17696,
       "less_crowded": 45826
      },
@@ -638,7 +667,7 @@
       "cells": 171681,
       "changed": 10851,
       "unchanged_share": 0.9367955685253464,
-      "unchanged_share_rider_weighted": 0.9468261975834675,
+      "unchanged_share_rider_weighted": 0.9468261975834664,
       "more_crowded": 6961,
       "less_crowded": 3890
      },
@@ -646,13 +675,13 @@
       "cells": 353849,
       "changed": 30415,
       "unchanged_share": 0.9140452565925014,
-      "unchanged_share_rider_weighted": 0.9129430985933249,
+      "unchanged_share_rider_weighted": 0.9129430985933237,
       "more_crowded": 19310,
       "less_crowded": 11105
      }
     },
     "load": {
-     "correlation": 0.9645759632357682,
+     "correlation": 0.9645759632357679,
      "route_hours": 28090
     }
    },
@@ -661,7 +690,7 @@
     "cells": 2003143,
     "changed": 102580,
     "unchanged_share": 0.9487904757673317,
-    "unchanged_share_rider_weighted": 0.9364810095058715,
+    "unchanged_share_rider_weighted": 0.9364810095058731,
     "more_crowded": 38037,
     "less_crowded": 64543,
     "bands": {
@@ -677,7 +706,7 @@
       "cells": 1127309,
       "changed": 64178,
       "unchanged_share": 0.9430697350948143,
-      "unchanged_share_rider_weighted": 0.9222968724138174,
+      "unchanged_share_rider_weighted": 0.9222968724138304,
       "more_crowded": 15217,
       "less_crowded": 48961
      },
@@ -685,7 +714,7 @@
       "cells": 171681,
       "changed": 10315,
       "unchanged_share": 0.939917637944793,
-      "unchanged_share_rider_weighted": 0.9487838211973155,
+      "unchanged_share_rider_weighted": 0.9487838211973156,
       "more_crowded": 6459,
       "less_crowded": 3856
      },
@@ -693,7 +722,7 @@
       "cells": 353849,
       "changed": 28087,
       "unchanged_share": 0.920624334108617,
-      "unchanged_share_rider_weighted": 0.9191342180209414,
+      "unchanged_share_rider_weighted": 0.9191342180209399,
       "more_crowded": 16361,
       "less_crowded": 11726
      }
@@ -708,7 +737,7 @@
     "cells": 2008488,
     "changed": 60269,
     "unchanged_share": 0.9699928503431438,
-    "unchanged_share_rider_weighted": 0.959185547961962,
+    "unchanged_share_rider_weighted": 0.9591855479619614,
     "more_crowded": 25704,
     "less_crowded": 34565,
     "bands": {
@@ -724,7 +753,7 @@
       "cells": 1133970,
       "changed": 35075,
       "unchanged_share": 0.9690688466185172,
-      "unchanged_share_rider_weighted": 0.955666192773475,
+      "unchanged_share_rider_weighted": 0.9556661927734768,
       "more_crowded": 11342,
       "less_crowded": 23733
      },
@@ -732,7 +761,7 @@
       "cells": 171681,
       "changed": 6870,
       "unchanged_share": 0.9599839236723924,
-      "unchanged_share_rider_weighted": 0.9659929494626651,
+      "unchanged_share_rider_weighted": 0.9659929494626642,
       "more_crowded": 3829,
       "less_crowded": 3041
      },
@@ -740,13 +769,13 @@
       "cells": 353849,
       "changed": 18324,
       "unchanged_share": 0.9482151991386156,
-      "unchanged_share_rider_weighted": 0.9473654277114071,
+      "unchanged_share_rider_weighted": 0.947365427711406,
       "more_crowded": 10533,
       "less_crowded": 7791
      }
     },
     "load": {
-     "correlation": 0.9887116091803084,
+     "correlation": 0.9887116091803088,
      "route_hours": 28166
     }
    },
@@ -755,7 +784,7 @@
     "cells": 2001381,
     "changed": 97109,
     "unchanged_share": 0.951479003747912,
-    "unchanged_share_rider_weighted": 0.9379996382997812,
+    "unchanged_share_rider_weighted": 0.9379996382997807,
     "more_crowded": 39006,
     "less_crowded": 58103,
     "bands": {
@@ -771,7 +800,7 @@
       "cells": 1126798,
       "changed": 59100,
       "unchanged_share": 0.9475504926348822,
-      "unchanged_share_rider_weighted": 0.9284015215763122,
+      "unchanged_share_rider_weighted": 0.9284015215763131,
       "more_crowded": 15909,
       "less_crowded": 43191
      },
@@ -787,7 +816,7 @@
       "cells": 353849,
       "changed": 27854,
       "unchanged_share": 0.9212828070730735,
-      "unchanged_share_rider_weighted": 0.9200692596065354,
+      "unchanged_share_rider_weighted": 0.9200692596065336,
       "more_crowded": 16872,
       "less_crowded": 10982
      }
@@ -804,7 +833,7 @@
     "cells": 1983013,
     "changed": 135657,
     "unchanged_share": 0.9315904636026088,
-    "unchanged_share_rider_weighted": 0.9118509609839427,
+    "unchanged_share_rider_weighted": 0.911850960983936,
     "more_crowded": 72114,
     "less_crowded": 63543,
     "bands": {
@@ -820,7 +849,7 @@
       "cells": 1110325,
       "changed": 81529,
       "unchanged_share": 0.9265719496543805,
-      "unchanged_share_rider_weighted": 0.8990234588432291,
+      "unchanged_share_rider_weighted": 0.899023458843188,
       "more_crowded": 43041,
       "less_crowded": 38488
      },
@@ -828,7 +857,7 @@
       "cells": 171681,
       "changed": 14441,
       "unchanged_share": 0.9158846931227101,
-      "unchanged_share_rider_weighted": 0.9280043264256916,
+      "unchanged_share_rider_weighted": 0.9280043264256902,
       "more_crowded": 7455,
       "less_crowded": 6986
      },
@@ -836,13 +865,13 @@
       "cells": 353849,
       "changed": 39687,
       "unchanged_share": 0.8878419890970443,
-      "unchanged_share_rider_weighted": 0.8860820984882978,
+      "unchanged_share_rider_weighted": 0.8860820984882993,
       "more_crowded": 21618,
       "less_crowded": 18069
      }
     },
     "load": {
-     "correlation": 0.9463666260707787,
+     "correlation": 0.9463666260707795,
      "route_hours": 27950
     }
    },
@@ -851,7 +880,7 @@
     "cells": 1988304,
     "changed": 114986,
     "unchanged_share": 0.9421688031608848,
-    "unchanged_share_rider_weighted": 0.9236996695117109,
+    "unchanged_share_rider_weighted": 0.9236996695117115,
     "more_crowded": 53396,
     "less_crowded": 61590,
     "bands": {
@@ -867,7 +896,7 @@
       "cells": 1116819,
       "changed": 67788,
       "unchanged_share": 0.9393026085695175,
-      "unchanged_share_rider_weighted": 0.9168558499870386,
+      "unchanged_share_rider_weighted": 0.9168558499870416,
       "more_crowded": 25920,
       "less_crowded": 41868
      },
@@ -875,7 +904,7 @@
       "cells": 171681,
       "changed": 12764,
       "unchanged_share": 0.9256528095712396,
-      "unchanged_share_rider_weighted": 0.9365560334774148,
+      "unchanged_share_rider_weighted": 0.936556033477415,
       "more_crowded": 7524,
       "less_crowded": 5240
      },
@@ -883,13 +912,13 @@
       "cells": 353849,
       "changed": 34434,
       "unchanged_share": 0.9026873044716814,
-      "unchanged_share_rider_weighted": 0.9014692458361102,
+      "unchanged_share_rider_weighted": 0.9014692458361105,
       "more_crowded": 19952,
       "less_crowded": 14482
      }
     },
     "load": {
-     "correlation": 0.9634149113341268,
+     "correlation": 0.9634149113341257,
      "route_hours": 27975
     }
    },
@@ -898,7 +927,7 @@
     "cells": 1980564,
     "changed": 132810,
     "unchanged_share": 0.9329433434112707,
-    "unchanged_share_rider_weighted": 0.9106930249613722,
+    "unchanged_share_rider_weighted": 0.9106930249613758,
     "more_crowded": 67484,
     "less_crowded": 65326,
     "bands": {
@@ -914,7 +943,7 @@
       "cells": 1109608,
       "changed": 77891,
       "unchanged_share": 0.9298031376846598,
-      "unchanged_share_rider_weighted": 0.9040451988260134,
+      "unchanged_share_rider_weighted": 0.9040451988260378,
       "more_crowded": 38470,
       "less_crowded": 39421
      },
@@ -922,7 +951,7 @@
       "cells": 171681,
       "changed": 14960,
       "unchanged_share": 0.9128616445617163,
-      "unchanged_share_rider_weighted": 0.9247684014677431,
+      "unchanged_share_rider_weighted": 0.9247684014677432,
       "more_crowded": 7869,
       "less_crowded": 7091
      },
@@ -930,13 +959,13 @@
       "cells": 353849,
       "changed": 39959,
       "unchanged_share": 0.8870732996278073,
-      "unchanged_share_rider_weighted": 0.8859174578969964,
+      "unchanged_share_rider_weighted": 0.885917457896997,
       "more_crowded": 21145,
       "less_crowded": 18814
      }
     },
     "load": {
-     "correlation": 0.951951038700697,
+     "correlation": 0.9519510387006972,
      "route_hours": 27910
     }
    },
@@ -945,7 +974,7 @@
     "cells": 1991206,
     "changed": 109614,
     "unchanged_share": 0.9449509493241784,
-    "unchanged_share_rider_weighted": 0.9284055271827164,
+    "unchanged_share_rider_weighted": 0.9284055271827161,
     "more_crowded": 45913,
     "less_crowded": 63701,
     "bands": {
@@ -961,7 +990,7 @@
       "cells": 1119135,
       "changed": 66397,
       "unchanged_share": 0.9406711433383819,
-      "unchanged_share_rider_weighted": 0.9182271908647267,
+      "unchanged_share_rider_weighted": 0.9182271908647268,
       "more_crowded": 22456,
       "less_crowded": 43941
      },
@@ -969,7 +998,7 @@
       "cells": 171681,
       "changed": 11859,
       "unchanged_share": 0.9309242140947455,
-      "unchanged_share_rider_weighted": 0.9403021440467704,
+      "unchanged_share_rider_weighted": 0.9403021440467703,
       "more_crowded": 6837,
       "less_crowded": 5022
      },
@@ -977,13 +1006,13 @@
       "cells": 353849,
       "changed": 31358,
       "unchanged_share": 0.9113802780281984,
-      "unchanged_share_rider_weighted": 0.9098090124246799,
+      "unchanged_share_rider_weighted": 0.9098090124246802,
       "more_crowded": 16620,
       "less_crowded": 14738
      }
     },
     "load": {
-     "correlation": 0.9615391838353141,
+     "correlation": 0.9615391838353138,
      "route_hours": 27992
     }
    },
@@ -992,7 +1021,7 @@
     "cells": 1985173,
     "changed": 126236,
     "unchanged_share": 0.9364105798335963,
-    "unchanged_share_rider_weighted": 0.9160063026672706,
+    "unchanged_share_rider_weighted": 0.9160063026672711,
     "more_crowded": 59579,
     "less_crowded": 66657,
     "bands": {
@@ -1008,7 +1037,7 @@
       "cells": 1112104,
       "changed": 74831,
       "unchanged_share": 0.932712228352744,
-      "unchanged_share_rider_weighted": 0.9064527451062799,
+      "unchanged_share_rider_weighted": 0.9064527451062839,
       "more_crowded": 34340,
       "less_crowded": 40491
      },
@@ -1016,7 +1045,7 @@
       "cells": 171681,
       "changed": 13928,
       "unchanged_share": 0.9188727931454267,
-      "unchanged_share_rider_weighted": 0.9300441438046101,
+      "unchanged_share_rider_weighted": 0.9300441438046098,
       "more_crowded": 7118,
       "less_crowded": 6810
      },
@@ -1024,13 +1053,13 @@
       "cells": 353849,
       "changed": 37477,
       "unchanged_share": 0.8940875910345939,
-      "unchanged_share_rider_weighted": 0.892796544041237,
+      "unchanged_share_rider_weighted": 0.8927965440412373,
       "more_crowded": 18121,
       "less_crowded": 19356
      }
     },
     "load": {
-     "correlation": 0.9569475549717544,
+     "correlation": 0.956947554971753,
      "route_hours": 27976
     }
    },
@@ -1039,7 +1068,7 @@
     "cells": 1990493,
     "changed": 102732,
     "unchanged_share": 0.9483886655215568,
-    "unchanged_share_rider_weighted": 0.9310612645290111,
+    "unchanged_share_rider_weighted": 0.9310612645290102,
     "more_crowded": 56477,
     "less_crowded": 46255,
     "bands": {
@@ -1055,7 +1084,7 @@
       "cells": 1118771,
       "changed": 60425,
       "unchanged_share": 0.9459898406376283,
-      "unchanged_share_rider_weighted": 0.9245945067323775,
+      "unchanged_share_rider_weighted": 0.9245945067323721,
       "more_crowded": 37645,
       "less_crowded": 22780
      },
@@ -1063,7 +1092,7 @@
       "cells": 171681,
       "changed": 11483,
       "unchanged_share": 0.9331143224934617,
-      "unchanged_share_rider_weighted": 0.9424689626402187,
+      "unchanged_share_rider_weighted": 0.9424689626402198,
       "more_crowded": 4988,
       "less_crowded": 6495
      },
@@ -1071,13 +1100,13 @@
       "cells": 353849,
       "changed": 30824,
       "unchanged_share": 0.9128893963244209,
-      "unchanged_share_rider_weighted": 0.9115387283699228,
+      "unchanged_share_rider_weighted": 0.9115387283699211,
       "more_crowded": 13844,
       "less_crowded": 16980
      }
     },
     "load": {
-     "correlation": 0.9718468701606725,
+     "correlation": 0.9718468701606721,
      "route_hours": 28000
     }
    }
@@ -1088,7 +1117,7 @@
     "cells": 1907114,
     "changed": 379418,
     "unchanged_share": 0.8010512218986384,
-    "unchanged_share_rider_weighted": 0.7637792498910823,
+    "unchanged_share_rider_weighted": 0.7637792498910819,
     "more_crowded": 172438,
     "less_crowded": 206980,
     "bands": {
@@ -1104,7 +1133,7 @@
       "cells": 1039605,
       "changed": 247515,
       "unchanged_share": 0.7619143809427619,
-      "unchanged_share_rider_weighted": 0.741725012562521,
+      "unchanged_share_rider_weighted": 0.7417250125625252,
       "more_crowded": 112102,
       "less_crowded": 135413
      },
@@ -1112,7 +1141,7 @@
       "cells": 171681,
       "changed": 42029,
       "unchanged_share": 0.7551913141232868,
-      "unchanged_share_rider_weighted": 0.7829840480971162,
+      "unchanged_share_rider_weighted": 0.7829840480971152,
       "more_crowded": 20753,
       "less_crowded": 21276
      },
@@ -1120,13 +1149,13 @@
       "cells": 353723,
       "changed": 89874,
       "unchanged_share": 0.7459198299234147,
-      "unchanged_share_rider_weighted": 0.7363606838681025,
+      "unchanged_share_rider_weighted": 0.7363606838681012,
       "more_crowded": 39583,
       "less_crowded": 50291
      }
     },
     "load": {
-     "correlation": 0.7399710551036126,
+     "correlation": 0.739971055103614,
      "route_hours": 27540
     }
    },
@@ -1135,7 +1164,7 @@
     "cells": 1897586,
     "changed": 455601,
     "unchanged_share": 0.7599049529243997,
-    "unchanged_share_rider_weighted": 0.7157405559396757,
+    "unchanged_share_rider_weighted": 0.7157405559396741,
     "more_crowded": 262650,
     "less_crowded": 192951,
     "bands": {
@@ -1151,7 +1180,7 @@
       "cells": 1028422,
       "changed": 300733,
       "unchanged_share": 0.7075782120569183,
-      "unchanged_share_rider_weighted": 0.6773595432460162,
+      "unchanged_share_rider_weighted": 0.6773595432460053,
       "more_crowded": 178897,
       "less_crowded": 121836
      },
@@ -1159,7 +1188,7 @@
       "cells": 171681,
       "changed": 50727,
       "unchanged_share": 0.7045275831338355,
-      "unchanged_share_rider_weighted": 0.7348080328313277,
+      "unchanged_share_rider_weighted": 0.7348080328313283,
       "more_crowded": 19437,
       "less_crowded": 31290
      },
@@ -1167,13 +1196,13 @@
       "cells": 353704,
       "changed": 104141,
       "unchanged_share": 0.7055701942867483,
-      "unchanged_share_rider_weighted": 0.6966200193310852,
+      "unchanged_share_rider_weighted": 0.6966200193310844,
       "more_crowded": 64316,
       "less_crowded": 39825
      }
     },
     "load": {
-     "correlation": 0.677957544514275,
+     "correlation": 0.6779575445142745,
      "route_hours": 27538
     }
    },
@@ -1182,7 +1211,7 @@
     "cells": 1906637,
     "changed": 402683,
     "unchanged_share": 0.7887993362134481,
-    "unchanged_share_rider_weighted": 0.7503823573771758,
+    "unchanged_share_rider_weighted": 0.7503823573771735,
     "more_crowded": 191342,
     "less_crowded": 211341,
     "bands": {
@@ -1198,7 +1227,7 @@
       "cells": 1037195,
       "changed": 265639,
       "unchanged_share": 0.7438871186228241,
-      "unchanged_share_rider_weighted": 0.7231203707895834,
+      "unchanged_share_rider_weighted": 0.723120370789571,
       "more_crowded": 126638,
       "less_crowded": 139001
      },
@@ -1206,7 +1235,7 @@
       "cells": 171681,
       "changed": 44863,
       "unchanged_share": 0.7386839545436013,
-      "unchanged_share_rider_weighted": 0.767259249698387,
+      "unchanged_share_rider_weighted": 0.7672592496983867,
       "more_crowded": 21347,
       "less_crowded": 23516
      },
@@ -1214,13 +1243,13 @@
       "cells": 353735,
       "changed": 92181,
       "unchanged_share": 0.7394066179484643,
-      "unchanged_share_rider_weighted": 0.7302163061226593,
+      "unchanged_share_rider_weighted": 0.730216306122658,
       "more_crowded": 43357,
       "less_crowded": 48824
      }
     },
     "load": {
-     "correlation": 0.7178666227418754,
+     "correlation": 0.7178666227418757,
      "route_hours": 27564
     }
    },
@@ -1229,7 +1258,7 @@
     "cells": 1899479,
     "changed": 441288,
     "unchanged_share": 0.7676794531553126,
-    "unchanged_share_rider_weighted": 0.7264003507385118,
+    "unchanged_share_rider_weighted": 0.726400350738514,
     "more_crowded": 272164,
     "less_crowded": 169124,
     "bands": {
@@ -1245,7 +1274,7 @@
       "cells": 1030719,
       "changed": 290698,
       "unchanged_share": 0.7179658083337942,
-      "unchanged_share_rider_weighted": 0.684441528480564,
+      "unchanged_share_rider_weighted": 0.6844415284805839,
       "more_crowded": 185002,
       "less_crowded": 105696
      },
@@ -1253,7 +1282,7 @@
       "cells": 171681,
       "changed": 48299,
       "unchanged_share": 0.7186700916234179,
-      "unchanged_share_rider_weighted": 0.7482210252362699,
+      "unchanged_share_rider_weighted": 0.7482210252362688,
       "more_crowded": 18479,
       "less_crowded": 29820
      },
@@ -1261,13 +1290,13 @@
       "cells": 353700,
       "changed": 102291,
       "unchanged_share": 0.7107972858354538,
-      "unchanged_share_rider_weighted": 0.703571495770171,
+      "unchanged_share_rider_weighted": 0.7035714957701703,
       "more_crowded": 68683,
       "less_crowded": 33608
      }
     },
     "load": {
-     "correlation": 0.6839313498106904,
+     "correlation": 0.6839313498106916,
      "route_hours": 27547
     }
    },
@@ -1276,7 +1305,7 @@
     "cells": 1909687,
     "changed": 374928,
     "unchanged_share": 0.803670444423615,
-    "unchanged_share_rider_weighted": 0.7682053750167401,
+    "unchanged_share_rider_weighted": 0.7682053750167365,
     "more_crowded": 195075,
     "less_crowded": 179853,
     "bands": {
@@ -1292,7 +1321,7 @@
       "cells": 1040123,
       "changed": 245486,
       "unchanged_share": 0.7639836826990654,
-      "unchanged_share_rider_weighted": 0.7437810499749953,
+      "unchanged_share_rider_weighted": 0.7437810499749717,
       "more_crowded": 128674,
       "less_crowded": 116812
      },
@@ -1300,7 +1329,7 @@
       "cells": 171681,
       "changed": 41975,
       "unchanged_share": 0.7555058509677832,
-      "unchanged_share_rider_weighted": 0.7867311830984882,
+      "unchanged_share_rider_weighted": 0.7867311830984869,
       "more_crowded": 20174,
       "less_crowded": 21801
      },
@@ -1308,13 +1337,13 @@
       "cells": 353735,
       "changed": 87467,
       "unchanged_share": 0.752732978076809,
-      "unchanged_share_rider_weighted": 0.7433407233890479,
+      "unchanged_share_rider_weighted": 0.7433407233890494,
       "more_crowded": 46227,
       "less_crowded": 41240
      }
     },
     "load": {
-     "correlation": 0.7525706070686458,
+     "correlation": 0.7525706070686444,
      "route_hours": 27603
     }
    },
@@ -1323,7 +1352,7 @@
     "cells": 1907486,
     "changed": 436625,
     "unchanged_share": 0.7710992374255958,
-    "unchanged_share_rider_weighted": 0.7338406417143328,
+    "unchanged_share_rider_weighted": 0.733840641714335,
     "more_crowded": 172361,
     "less_crowded": 264264,
     "bands": {
@@ -1339,7 +1368,7 @@
       "cells": 1030770,
       "changed": 290098,
       "unchanged_share": 0.7185618518195136,
-      "unchanged_share_rider_weighted": 0.6888431721041448,
+      "unchanged_share_rider_weighted": 0.6888431721041628,
       "more_crowded": 109761,
       "less_crowded": 180337
      },
@@ -1347,7 +1376,7 @@
       "cells": 171681,
       "changed": 46787,
       "unchanged_share": 0.7274771232693192,
-      "unchanged_share_rider_weighted": 0.7559391695272104,
+      "unchanged_share_rider_weighted": 0.7559391695272105,
       "more_crowded": 28242,
       "less_crowded": 18545
      },
@@ -1355,13 +1384,13 @@
       "cells": 353747,
       "changed": 99740,
       "unchanged_share": 0.7180470788444849,
-      "unchanged_share_rider_weighted": 0.7119658192596248,
+      "unchanged_share_rider_weighted": 0.7119658192596241,
       "more_crowded": 34358,
       "less_crowded": 65382
      }
     },
     "load": {
-     "correlation": 0.7053190746915399,
+     "correlation": 0.7053190746915395,
      "route_hours": 27679
     }
    }
@@ -1371,7 +1400,7 @@
     "held_out": "5-9 Oct",
     "cells": 1923427,
     "coverage": 0.5506302032777953,
-    "coverage_rider_weighted": 0.6308227933848006,
+    "coverage_rider_weighted": 0.6308227933847996,
     "bands": {
      "0": {
       "cells": 341730,
@@ -1381,17 +1410,17 @@
      "1-29": {
       "cells": 1056241,
       "coverage": 0.39429069691481394,
-      "coverage_rider_weighted": 0.39988373467953064
+      "coverage_rider_weighted": 0.39988373467952987
      },
      "100+": {
       "cells": 171681,
       "coverage": 0.7012424205357611,
-      "coverage_rider_weighted": 0.7408143305263495
+      "coverage_rider_weighted": 0.7408143305263489
      },
      "30-99": {
       "cells": 353775,
       "coverage": 0.5102423856971239,
-      "coverage_rider_weighted": 0.527093098967514
+      "coverage_rider_weighted": 0.5270930989675136
      }
     }
    },
@@ -1399,7 +1428,7 @@
     "held_out": "12-16 Oct",
     "cells": 1928015,
     "coverage": 0.5666169609676274,
-    "coverage_rider_weighted": 0.658314452876594,
+    "coverage_rider_weighted": 0.6583144528765934,
     "bands": {
      "0": {
       "cells": 343309,
@@ -1409,17 +1438,17 @@
      "1-29": {
       "cells": 1059258,
       "coverage": 0.4080554501358498,
-      "coverage_rider_weighted": 0.4178180618936987
+      "coverage_rider_weighted": 0.41781806189369847
      },
      "100+": {
       "cells": 171681,
       "coverage": 0.726731554452735,
-      "coverage_rider_weighted": 0.7673756268718971
+      "coverage_rider_weighted": 0.7673756268718964
      },
      "30-99": {
       "cells": 353767,
       "coverage": 0.5431117091192791,
-      "coverage_rider_weighted": 0.5614739831925009
+      "coverage_rider_weighted": 0.5614739831925003
      }
     }
    },
@@ -1427,7 +1456,7 @@
     "held_out": "21-23 Oct",
     "cells": 1911373,
     "coverage": 0.4732053869129678,
-    "coverage_rider_weighted": 0.5570511515449523,
+    "coverage_rider_weighted": 0.5570511515449519,
     "bands": {
      "0": {
       "cells": 342277,
@@ -1437,17 +1466,17 @@
      "1-29": {
       "cells": 1043643,
       "coverage": 0.2963063039755932,
-      "coverage_rider_weighted": 0.2773683825695417
+      "coverage_rider_weighted": 0.2773683825695357
      },
      "100+": {
       "cells": 171681,
       "coverage": 0.6416784617983353,
-      "coverage_rider_weighted": 0.6947760887464562
+      "coverage_rider_weighted": 0.6947760887464572
      },
      "30-99": {
       "cells": 353772,
       "coverage": 0.40363002159583006,
-      "coverage_rider_weighted": 0.42127781464856073
+      "coverage_rider_weighted": 0.42127781464856084
      }
     }
    },
@@ -1455,7 +1484,7 @@
     "held_out": "26-30 Oct",
     "cells": 1925265,
     "coverage": 0.5489670253185925,
-    "coverage_rider_weighted": 0.6430080231204405,
+    "coverage_rider_weighted": 0.6430080231204413,
     "bands": {
      "0": {
       "cells": 343111,
@@ -1465,30 +1494,30 @@
      "1-29": {
       "cells": 1056665,
       "coverage": 0.3843971362730856,
-      "coverage_rider_weighted": 0.390010083670305
+      "coverage_rider_weighted": 0.39001008367030554
      },
      "100+": {
       "cells": 171681,
       "coverage": 0.7128220362183352,
-      "coverage_rider_weighted": 0.7579178265455835
+      "coverage_rider_weighted": 0.7579178265455844
      },
      "30-99": {
       "cells": 353808,
       "coverage": 0.5235579749468638,
-      "coverage_rider_weighted": 0.5406565094013591
+      "coverage_rider_weighted": 0.5406565094013588
      }
     }
    }
   ],
   "summary": {
-   "unchanged_level_share": 0.7430580884462531,
+   "unchanged_level_share": 0.7430580884462525,
    "unchanged_level_share_cells": 0.7820341076735017,
-   "load_correlation": 0.7129360423217731,
-   "unchanged_level_share_leave_one_out": 0.9418405713240482,
+   "load_correlation": 0.7129360423217733,
+   "unchanged_level_share_leave_one_out": 0.9418405713240483,
    "unchanged_level_share_leave_one_out_cells": 0.9544611002684744,
    "load_correlation_leave_one_out": 0.9718160146386484,
-   "unchanged_level_share_leave_one_out_pairs": 0.9202861249726705,
-   "range_coverage": 0.6222991052316968,
+   "unchanged_level_share_leave_one_out_pairs": 0.92028612497267,
+   "range_coverage": 0.6222991052316965,
    "range_coverage_cells": 0.5348548941192457,
    "by_ticket_band": {
     "0": {
@@ -1496,15 +1525,15 @@
      "cells": 2068725
     },
     "1-29": {
-     "unchanged_level_share": 0.7098784461929707,
+     "unchanged_level_share": 0.70987844619297,
      "cells": 6206834
     },
     "30-99": {
-     "unchanged_level_share": 0.720345841290115,
+     "unchanged_level_share": 0.7203458412901146,
      "cells": 2122344
     },
     "100+": {
-     "unchanged_level_share": 0.7626571180814666,
+     "unchanged_level_share": 0.762657118081466,
      "cells": 1030086
     }
    }
@@ -1512,43 +1541,44 @@
  },
  "independent": {
   "dtc_bus_km": {
-   "model": 1147445.4464991468,
-   "regular_and_office_only": 1145284.3053113378,
+   "model": 1147445.44649913,
+   "regular_and_office_only": 1145284.3053113287,
    "rho": 1.0,
    "rho_source": "none: GPS aggregates not available, so every scheduled trip counts as run",
    "passings": 1976283,
    "passings_without_shape": 0,
    "published": 501000.0,
-   "value": 1147445.4464991468,
+   "value": 1147445.44649913,
    "band": [
     400800.0,
     601200.0
    ],
    "hit": false,
    "position": "above",
-   "implied_rho": 0.4366220647164968
+   "basis": "each scheduled trip's stretches once (one passing per trip per stop, stretch = stop k to k+1, rings capped at n_stops-1), on the feed's single service day (one service_id), the per-day basis of the published figure",
+   "implied_rho": 0.43662206471650317
   },
   "load_factor": {
-   "model": 0.49272609838947967,
+   "model": 0.4927260983894732,
    "by_operator": {
     "DIMTS": {
-     "load_factor": 0.4692136682238084,
-     "bus_km": 369744.4781056806
+     "load_factor": 0.46921366822380456,
+     "bus_km": 369744.47810568125
     },
     "DTC": {
-     "load_factor": 0.5004656568192682,
-     "bus_km": 1103863.0774162828
+     "load_factor": 0.5004656568192609,
+     "bus_km": 1103863.0774162752
     },
     "all": {
-     "load_factor": 0.49272609838947967,
-     "bus_km": 1473607.5555219634
+     "load_factor": 0.4927260983894732,
+     "bus_km": 1473607.5555219564
     }
    },
    "coverage_bus_km_share": 0.9317060912901599,
-   "at_implied_rho_first_order": 1.1284956446473033,
+   "at_implied_rho_first_order": 1.128495644647272,
    "definition": "weekday passenger-km / seat-km over scheduled service on commuter-facing cells (people on board capped at crush load; seats, not rated totals)",
    "published_note": "DTC 88-89%, cluster 78% (Economic Survey of Delhi 2025-26, ch. 12); definitions differ, so this is a rough check",
-   "value": 0.49272609838947967,
+   "value": 0.4927260983894732,
    "band": [
     0.78,
     0.89
@@ -1589,7 +1619,7 @@
    "less_crowded": 281636,
    "changed": 281636,
    "share_changed": 0.09209247178148361,
-   "share_changed_rider_weighted": 0.27665673439065164,
+   "share_changed_rider_weighted": 0.27665673439064953,
    "operators": {
     "DTC": {
      "e_star": 69.87394033598957,
@@ -1612,7 +1642,7 @@
    "less_crowded": 0,
    "changed": 264226,
    "share_changed": 0.08639955633844498,
-   "share_changed_rider_weighted": 0.20930123678897372,
+   "share_changed_rider_weighted": 0.20930123678897383,
    "operators": {
     "DTC": {
      "e_star": 69.87394033598957,
@@ -1635,7 +1665,7 @@
    "less_crowded": 43556,
    "changed": 47450,
    "share_changed": 0.015515728763479841,
-   "share_changed_rider_weighted": 0.07625092631567998,
+   "share_changed_rider_weighted": 0.07625092631568031,
    "operators": {
     "DTC": {
      "e_star": 69.87394033598957,
@@ -1658,7 +1688,7 @@
    "less_crowded": 0,
    "changed": 58402,
    "share_changed": 0.019096935537297077,
-   "share_changed_rider_weighted": 0.014546224319446632,
+   "share_changed_rider_weighted": 0.014546224319445855,
    "operators": {
     "DTC": {
      "e_star": 104.42901287397541,
@@ -1681,7 +1711,7 @@
    "less_crowded": 58218,
    "changed": 58218,
    "share_changed": 0.01903676917075381,
-   "share_changed_rider_weighted": 0.03296108411828014,
+   "share_changed_rider_weighted": 0.032961084118280026,
    "operators": {
     "DTC": {
      "e_star": 52.710739414694324,
@@ -1704,7 +1734,7 @@
    "less_crowded": 16766,
    "changed": 25872,
    "share_changed": 0.008459914321786055,
-   "share_changed_rider_weighted": 0.015156106400546765,
+   "share_changed_rider_weighted": 0.015156106400547653,
    "operators": {
     "DTC": {
      "e_star": 61.887370213448214,
@@ -1727,7 +1757,7 @@
    "less_crowded": 166189,
    "changed": 527430,
    "share_changed": 0.17246492774967648,
-   "share_changed_rider_weighted": 0.3813390481367134,
+   "share_changed_rider_weighted": 0.3813390481367096,
    "operators": {
     "DTC": {
      "e_star": 34.809670957991806,
@@ -1750,7 +1780,7 @@
    "less_crowded": 17806,
    "changed": 17806,
    "share_changed": 0.0058224039275557304,
-   "share_changed_rider_weighted": 0.0013935169678769288,
+   "share_changed_rider_weighted": 0.0013935169678771508,
    "operators": {
     "DTC": {
      "e_star": 69.61934191598361,
@@ -1773,7 +1803,7 @@
    "less_crowded": 0,
    "changed": 23670,
    "share_changed": 0.007739879870001465,
-   "share_changed_rider_weighted": 0.001073378446782014,
+   "share_changed_rider_weighted": 0.0010733784467812368,
    "operators": {
     "DTC": {
      "e_star": 69.87394033598957,
@@ -1796,7 +1826,7 @@
    "less_crowded": 5623,
    "changed": 34604,
    "share_changed": 0.011315200803613368,
-   "share_changed_rider_weighted": 0.02117887726992651,
+   "share_changed_rider_weighted": 0.02117887726992529,
    "operators": {
     "DTC": {
      "e_star": 73.45586768400221,
@@ -1862,7 +1892,7 @@
      "operator": "DIMTS",
      "hour": 7,
      "share_crowded": 0.033,
-     "share_over_crush": 0.0053
+     "share_over_crush": 0.0052
     },
     {
      "operator": "DIMTS",
@@ -2323,146 +2353,146 @@
     {
      "day_type": "weekday",
      "band": "00-05",
-     "bus_km": 22672.722174692964,
-     "seats": 0.8381482505712511,
-     "standing": 0.027514501460054918,
-     "crowded": 0.010033001969740293,
-     "no_data": 0.12430424599895375,
-     "evidence_many_tickets": 0.0019391127411985663,
-     "evidence_rough": 0.8737566412598478,
-     "evidence_none": 0.12430424599895375
+     "bus_km": 22672.722174692975,
+     "seats": 0.838148250571251,
+     "standing": 0.027514501460054908,
+     "crowded": 0.01003300196974029,
+     "no_data": 0.12430424599895364,
+     "evidence_many_tickets": 0.0019391127411985654,
+     "evidence_rough": 0.8737566412598476,
+     "evidence_none": 0.12430424599895364
     },
     {
      "day_type": "weekday",
      "band": "05-08",
-     "bus_km": 170453.15025988437,
-     "seats": 0.7767664249606223,
-     "standing": 0.11791937839309134,
-     "crowded": 0.016164500787900094,
-     "no_data": 0.08914969585838611,
-     "evidence_many_tickets": 0.03492605287296481,
-     "evidence_rough": 0.875924251268649,
-     "evidence_none": 0.08914969585838611
+     "bus_km": 170453.1502598846,
+     "seats": 0.776766424960623,
+     "standing": 0.11791937839309105,
+     "crowded": 0.01616450078790007,
+     "no_data": 0.089149695858386,
+     "evidence_many_tickets": 0.034926052872964734,
+     "evidence_rough": 0.8759242512686494,
+     "evidence_none": 0.089149695858386
     },
     {
      "day_type": "weekday",
      "band": "08-11",
-     "bus_km": 278534.7621629965,
-     "seats": 0.48965814258701174,
-     "standing": 0.3074277712240895,
-     "crowded": 0.16295432790498265,
-     "no_data": 0.03995975828391614,
-     "evidence_many_tickets": 0.15322035922169083,
-     "evidence_rough": 0.806819882494393,
-     "evidence_none": 0.03995975828391614
+     "bus_km": 278534.76216299646,
+     "seats": 0.489658142587012,
+     "standing": 0.307427771224089,
+     "crowded": 0.16295432790498274,
+     "no_data": 0.0399597582839162,
+     "evidence_many_tickets": 0.15322035922169056,
+     "evidence_rough": 0.8068198824943932,
+     "evidence_none": 0.0399597582839162
     },
     {
      "day_type": "weekday",
      "band": "11-17",
-     "bus_km": 535845.81613112,
-     "seats": 0.8245615632131303,
-     "standing": 0.08540053437692875,
-     "crowded": 0.008068970050739588,
-     "no_data": 0.0819689323592014,
-     "evidence_many_tickets": 0.018793473794026128,
-     "evidence_rough": 0.8992375938467725,
-     "evidence_none": 0.0819689323592014
+     "bus_km": 535845.8161311217,
+     "seats": 0.8245615632131306,
+     "standing": 0.08540053437692864,
+     "crowded": 0.008068970050739558,
+     "no_data": 0.08196893235920133,
+     "evidence_many_tickets": 0.01879347379402608,
+     "evidence_rough": 0.8992375938467727,
+     "evidence_none": 0.08196893235920133
     },
     {
      "day_type": "weekday",
      "band": "17-21",
-     "bus_km": 369945.6433960239,
-     "seats": 0.659549592453907,
-     "standing": 0.2238889191586387,
-     "crowded": 0.07481008736636771,
-     "no_data": 0.04175140102108659,
-     "evidence_many_tickets": 0.07930700236003195,
-     "evidence_rough": 0.8789415966188815,
-     "evidence_none": 0.04175140102108659
+     "bus_km": 369945.6433960228,
+     "seats": 0.6595495924539059,
+     "standing": 0.2238889191586397,
+     "crowded": 0.07481008736636781,
+     "no_data": 0.04175140102108674,
+     "evidence_many_tickets": 0.07930700236003217,
+     "evidence_rough": 0.878941596618881,
+     "evidence_none": 0.04175140102108674
     },
     {
      "day_type": "weekday",
      "band": "21-24",
-     "bus_km": 204170.66148208364,
-     "seats": 0.7642576061688684,
-     "standing": 0.12019994066870439,
-     "crowded": 0.020022373713918386,
-     "no_data": 0.09552007944850877,
-     "evidence_many_tickets": 0.03229782799955516,
-     "evidence_rough": 0.8721820925519359,
-     "evidence_none": 0.09552007944850877
+     "bus_km": 204170.661482084,
+     "seats": 0.7642576061688686,
+     "standing": 0.12019994066870425,
+     "crowded": 0.020022373713918344,
+     "no_data": 0.09552007944850867,
+     "evidence_many_tickets": 0.032297827999555107,
+     "evidence_rough": 0.8721820925519361,
+     "evidence_none": 0.09552007944850867
     },
     {
      "day_type": "weekend",
      "band": "00-05",
-     "bus_km": 21641.493077565716,
-     "seats": 0.832198258373514,
-     "standing": 0.029166712205543736,
-     "crowded": 0.009931180576182025,
-     "no_data": 0.12870384884476016,
-     "evidence_many_tickets": 0.0014424134372834237,
-     "evidence_rough": 0.8698537377179564,
-     "evidence_none": 0.12870384884476016
+     "bus_km": 21641.49307756568,
+     "seats": 0.8321982583735137,
+     "standing": 0.029166712205543798,
+     "crowded": 0.009931180576182043,
+     "no_data": 0.12870384884476033,
+     "evidence_many_tickets": 0.001442413437283426,
+     "evidence_rough": 0.8698537377179562,
+     "evidence_none": 0.12870384884476033
     },
     {
      "day_type": "weekend",
      "band": "05-08",
-     "bus_km": 149445.84951045676,
-     "seats": 0.8322628225086761,
-     "standing": 0.06979594263141717,
-     "crowded": 0.004281283117517548,
-     "no_data": 0.09365995174238935,
-     "evidence_many_tickets": 0.007214321629269836,
-     "evidence_rough": 0.899125726628341,
-     "evidence_none": 0.09365995174238935
+     "bus_km": 149445.849510457,
+     "seats": 0.8322628225086763,
+     "standing": 0.06979594263141704,
+     "crowded": 0.004281283117517543,
+     "no_data": 0.09365995174238927,
+     "evidence_many_tickets": 0.0072143216292698265,
+     "evidence_rough": 0.8991257266283411,
+     "evidence_none": 0.09365995174238927
     },
     {
      "day_type": "weekend",
      "band": "08-11",
-     "bus_km": 271323.853677512,
+     "bus_km": 271323.8536775115,
      "seats": 0.6449037676350358,
      "standing": 0.2791076971482253,
-     "crowded": 0.035471191984180125,
-     "no_data": 0.04051734323255877,
-     "evidence_many_tickets": 0.0533251168645242,
-     "evidence_rough": 0.906157539902917,
-     "evidence_none": 0.04051734323255877
+     "crowded": 0.03547119198418018,
+     "no_data": 0.04051734323255886,
+     "evidence_many_tickets": 0.05332511686452429,
+     "evidence_rough": 0.9061575399029169,
+     "evidence_none": 0.04051734323255886
     },
     {
      "day_type": "weekend",
      "band": "11-17",
-     "bus_km": 523913.2289841547,
-     "seats": 0.8326996453206775,
-     "standing": 0.07969789001310366,
-     "crowded": 0.005657815250084744,
-     "no_data": 0.08194464941613414,
-     "evidence_many_tickets": 0.011292652260309835,
-     "evidence_rough": 0.906762698323556,
-     "evidence_none": 0.08194464941613414
+     "bus_km": 523913.2289841558,
+     "seats": 0.8326996453206779,
+     "standing": 0.0796978900131036,
+     "crowded": 0.005657815250084729,
+     "no_data": 0.08194464941613383,
+     "evidence_many_tickets": 0.011292652260309814,
+     "evidence_rough": 0.9067626983235564,
+     "evidence_none": 0.08194464941613383
     },
     {
      "day_type": "weekend",
      "band": "17-21",
-     "bus_km": 360069.42298124684,
+     "bus_km": 360069.42298124655,
      "seats": 0.7858443045822832,
-     "standing": 0.1608799665928549,
-     "crowded": 0.012283020678240414,
-     "no_data": 0.04099270814662146,
-     "evidence_many_tickets": 0.019765753032048413,
-     "evidence_rough": 0.9392415388213302,
-     "evidence_none": 0.04099270814662146
+     "standing": 0.16087996659285494,
+     "crowded": 0.01228302067824042,
+     "no_data": 0.04099270814662144,
+     "evidence_many_tickets": 0.01976575303204843,
+     "evidence_rough": 0.9392415388213301,
+     "evidence_none": 0.04099270814662144
     },
     {
      "day_type": "weekend",
      "band": "21-24",
-     "bus_km": 216905.63168466772,
+     "bus_km": 216905.63168466758,
      "seats": 0.7954777358521248,
-     "standing": 0.10504919796328491,
-     "crowded": 0.008554321718217751,
-     "no_data": 0.0909187444663725,
-     "evidence_many_tickets": 0.011689233213234408,
+     "standing": 0.10504919796328498,
+     "crowded": 0.008554321718217756,
+     "no_data": 0.09091874446637253,
+     "evidence_many_tickets": 0.01168923321323442,
      "evidence_rough": 0.897392022320393,
-     "evidence_none": 0.0909187444663725
+     "evidence_none": 0.09091874446637253
     }
    ]
   },
@@ -2686,119 +2716,119 @@
    "status": "not available",
    "note": "needs the planner (alternatives per origin, destination and hour)"
   },
-  "seconds": 0.5,
-  "runtime_seconds": 35.9,
+  "seconds": 0.6,
+  "runtime_seconds": 40.3,
   "timings": {
    "gates": 0.6,
-   "expectations_and_published": 0.3,
-   "base_case": 1.8,
-   "sensitivity": 17.9,
-   "repeatability": 14.8,
-   "diagnostics": 0.5
+   "expectations_and_published": 0.4,
+   "base_case": 1.9,
+   "sensitivity": 18.8,
+   "repeatability": 18.0,
+   "diagnostics": 0.6
   }
  },
  "coverage_summary": {
   "all": {
-   "bus_km": 3124922.2355223773,
+   "bus_km": 3124922.235522408,
    "level": {
-    "seats": 0.7484336718198787,
-    "standing": 0.1500009901273981,
-    "crowded": 0.033338408045387666,
-    "no_data": 0.06822693000733557
+    "seats": 0.748433671819881,
+    "standing": 0.1500009901273971,
+    "crowded": 0.03333840804538725,
+    "no_data": 0.06822693000733468
    },
    "evidence": {
-    "many_tickets": 0.04026499768023254,
-    "rough": 0.8915080723124319,
-    "none": 0.06822693000733557
+    "many_tickets": 0.040264997680232076,
+    "rough": 0.8915080723124332,
+    "none": 0.06822693000733468
    },
-   "commuter_facing": 0.9317730699926645,
-   "many_tickets": 0.04026499768023254
+   "commuter_facing": 0.9317730699926653,
+   "many_tickets": 0.040264997680232076
   },
   "weekday": {
-   "bus_km": 1581622.7556067922,
+   "bus_km": 1581622.7556067656,
    "level": {
-    "seats": 0.7142452522104382,
-    "standing": 0.16406088561673346,
-    "crowded": 0.05339995346299166,
-    "no_data": 0.06829390870983665
+    "seats": 0.7142452522104347,
+    "standing": 0.16406088561673518,
+    "crowded": 0.053399953462992485,
+    "no_data": 0.06829390870983758
    },
    "evidence": {
-    "many_tickets": 0.05986153771851888,
-    "rough": 0.8718445535716444,
-    "none": 0.06829390870983665
+    "many_tickets": 0.05986153771851986,
+    "rough": 0.8718445535716425,
+    "none": 0.06829390870983758
    },
-   "commuter_facing": 0.9317060912901634,
-   "many_tickets": 0.05986153771851888
+   "commuter_facing": 0.9317060912901625,
+   "many_tickets": 0.05986153771851986
   },
   "weekday_DTC": {
-   "bus_km": 1170598.284351559,
+   "bus_km": 1170598.2843515568,
    "level": {
     "seats": 0.7184958918287404,
-    "standing": 0.1710945109425321,
-    "crowded": 0.05340011085975537,
-    "no_data": 0.05700948636897211
+    "standing": 0.17109451094253206,
+    "crowded": 0.053400110859755365,
+    "no_data": 0.057009486368972094
    },
    "evidence": {
-    "many_tickets": 0.06511443928931147,
-    "rough": 0.8778760743417164,
-    "none": 0.05700948636897211
+    "many_tickets": 0.06511443928931152,
+    "rough": 0.8778760743417163,
+    "none": 0.057009486368972094
    },
-   "commuter_facing": 0.9429905136310279,
-   "many_tickets": 0.06511443928931147
+   "commuter_facing": 0.9429905136310278,
+   "many_tickets": 0.06511443928931152
   },
   "weekday_DIMTS": {
-   "bus_km": 411024.47125521326,
+   "bus_km": 411024.4712552132,
    "level": {
-    "seats": 0.70213942447373,
-    "standing": 0.14402911058882867,
-    "crowded": 0.05339950519678502,
-    "no_data": 0.10043195974065625
+    "seats": 0.7021394244737301,
+    "standing": 0.1440291105888287,
+    "crowded": 0.053399505196785026,
+    "no_data": 0.10043195974065626
    },
    "evidence": {
-    "many_tickets": 0.04490126650192214,
+    "many_tickets": 0.044901266501922145,
     "rough": 0.8546667737574216,
-    "none": 0.10043195974065625
+    "none": 0.10043195974065626
    },
-   "commuter_facing": 0.8995680402593438,
-   "many_tickets": 0.04490126650192214
+   "commuter_facing": 0.8995680402593437,
+   "many_tickets": 0.044901266501922145
   },
   "weekend": {
-   "bus_km": 1543299.4799155851,
+   "bus_km": 1543299.479915581,
    "level": {
-    "seats": 0.7834710596608171,
-    "standing": 0.13559195873927174,
-    "crowded": 0.012778693512951462,
-    "no_data": 0.06815828808695969
+    "seats": 0.7834710596608164,
+    "standing": 0.13559195873927227,
+    "crowded": 0.012778693512951486,
+    "no_data": 0.06815828808695985
    },
    "evidence": {
-    "many_tickets": 0.020181835559677334,
-    "rough": 0.911659876353363,
-    "none": 0.06815828808695969
+    "many_tickets": 0.020181835559677393,
+    "rough": 0.9116598763533628,
+    "none": 0.06815828808695985
    },
-   "commuter_facing": 0.9318417119130403,
-   "many_tickets": 0.020181835559677334
+   "commuter_facing": 0.9318417119130401,
+   "many_tickets": 0.020181835559677393
   },
   "weekend_DTC": {
-   "bus_km": 1142522.696890918,
+   "bus_km": 1142522.696890924,
    "level": {
-    "seats": 0.7884908533258769,
-    "standing": 0.14254938183171806,
-    "crowded": 0.01264524654935182,
-    "no_data": 0.05631451829305344
+    "seats": 0.7884908533258778,
+    "standing": 0.14254938183171714,
+    "crowded": 0.012645246549351752,
+    "no_data": 0.056314518293053215
    },
    "evidence": {
-    "many_tickets": 0.022991916108226776,
-    "rough": 0.9206935655987198,
-    "none": 0.05631451829305344
+    "many_tickets": 0.022991916108226665,
+    "rough": 0.92069356559872,
+    "none": 0.056314518293053215
    },
-   "commuter_facing": 0.9436854817069467,
-   "many_tickets": 0.022991916108226776
+   "commuter_facing": 0.9436854817069468,
+   "many_tickets": 0.022991916108226665
   },
   "weekend_DIMTS": {
    "bus_km": 400776.7830246735,
    "level": {
     "seats": 0.7691607791282102,
-    "standing": 0.1157579410723753,
+    "standing": 0.11575794107237534,
     "crowded": 0.013159120202324555,
     "no_data": 0.1019221595970899
    },
@@ -2807,7 +2837,7 @@
     "rough": 0.8859069000417501,
     "none": 0.1019221595970899
    },
-   "commuter_facing": 0.89807784040291,
+   "commuter_facing": 0.8980778404029102,
    "many_tickets": 0.012170940361160025
   },
   "note": "share of scheduled bus-km (as in coverage.csv, which has the hourly detail)"
@@ -2821,7 +2851,7 @@
   "exact": true,
   "ops": {
    "DTC": {
-    "e_star": 69.8739403359896,
+    "e_star": 69.87394033598957,
     "capped_routes": 746,
     "unallocated_share": 0.0,
     "ceiling_bound": false
@@ -2843,7 +2873,7 @@
   "clean_days": 29,
   "e_dtc": 34.809670957991806,
   "e_dimts": 77.18062992837615,
-  "e_star_dtc": 69.87394033598957,
+  "e_star_dtc": 69.8739403359896,
   "e_star_dimts": 231.54188978512843,
   "e_scale_ceiling_multiplier": 3.0,
   "capped_routes": 1155,
@@ -2855,10 +2885,10 @@
   "ceiling_bound_dimts": true,
   "published_ridership_dtc": 2429000,
   "published_ridership_dimts": 1530000,
-  "rider_minutes_gate_deviation": 0.00020227134310824013,
+  "rider_minutes_gate_deviation": 0.0002022713431140133,
   "run_time_gate_max_deviation": 0.06141658632518299,
-  "rider_volume_no_bus_share": 0.0072479010869116725,
-  "rider_volume_widened_share": 0.01692330721131322,
+  "rider_volume_no_bus_share": 0.007247901086911665,
+  "rider_volume_widened_share": 0.0169233072113132,
   "no_data_routes": 603,
   "alighting_sensitive_routes": 662,
   "service_class_regular": 2338,
@@ -2873,12 +2903,12 @@
   "dtc_factor_18h_alternative_window": 1.5213246002050367,
   "dtc_factor_8h": 1.003307295652139,
   "dtc_factor_8h_alternative_window": 1.0325642592669866,
-  "unchanged_level_share": 0.7430580884462531,
+  "unchanged_level_share": 0.7430580884462525,
   "unchanged_level_share_cells": 0.7820341076735017,
-  "unchanged_level_share_leave_one_out": 0.9418405713240482,
-  "load_correlation_week_pairs": 0.7129360423217731,
+  "unchanged_level_share_leave_one_out": 0.9418405713240483,
+  "load_correlation_week_pairs": 0.7129360423217733,
   "load_correlation_leave_one_out": 0.9718160146386484,
-  "range_coverage_heldout": 0.6222991052316968,
+  "range_coverage_heldout": 0.6222991052316965,
   "corridor_hits_strong": 2,
   "corridors_strong": 2,
   "corridor_hits_moderate": 4,
@@ -2886,6 +2916,11 @@
   "corridor_hits_weak": 4,
   "corridors_weak": 4,
   "corridor_hits_total": 10,
+  "corridor_hits_both_ends": 6,
+  "corridor_hits_chance_expected": 9.993500000000001,
+  "corridor_hits_chance_method": "seeded simulation, 2000 draws per corridor, seed 25, stretches drawn without replacement from the 13,181 weekday stretches with service",
+  "corridor_top_decile_share": 0.17908577551740407,
+  "corridor_top_decile_chance": 0.09999999999999998,
   "corridor_top_decile_share_mean": 0.17908577551740407,
   "corridor_chance_hit_mean": 0.9975107975786539,
   "corridors_total": 10,
@@ -2900,16 +2935,16 @@
   "radial_pairs": 359,
   "radial_am_share": 0.8662952646239555,
   "radial_pm_share": 0.8384401114206128,
-  "dtc_bus_km_model": 1147445.4464991468,
+  "dtc_bus_km_model": 1147445.44649913,
   "dtc_bus_km_published": 501000.0,
   "dtc_bus_km_hit": false,
-  "dtc_implied_rho": 0.4366220647164968,
-  "load_factor_model": 0.49272609838947967,
+  "dtc_implied_rho": 0.43662206471650317,
+  "load_factor_model": 0.4927260983894732,
   "load_factor_hit": false,
-  "load_factor_dtc": 0.5004656568192682,
-  "load_factor_dimts": 0.4692136682238084,
-  "bus_km_share_commuter_facing": 0.9317730699926648,
-  "bus_km_share_many_tickets": 0.04026499768023232,
+  "load_factor_dtc": 0.5004656568192609,
+  "load_factor_dimts": 0.46921366822380456,
+  "bus_km_share_commuter_facing": 0.9317730699926656,
+  "bus_km_share_many_tickets": 0.04026499768023211,
   "gps_available": false,
   "sensitivity_e_minus_30": 0.09209247178148361,
   "sensitivity_e_plus_30": 0.08639955633844498,
@@ -2921,6 +2956,6 @@
   "sensitivity_ceiling_2x": 0.0058224039275557304,
   "sensitivity_ceiling_5x": 0.007739879870001465,
   "sensitivity_no_alighting_correction": 0.011315200803613368,
-  "validation_runtime_seconds": 35.9
+  "validation_runtime_seconds": 40.3
  }
 }

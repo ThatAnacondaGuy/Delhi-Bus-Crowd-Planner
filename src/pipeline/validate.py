@@ -503,6 +503,42 @@ def _heading_ok(direction: str | None, lat0, lon0, lat1, lon1) -> np.ndarray:
     return np.ones(n, dtype=bool)
 
 
+CHANCE_DRAWS = 2000
+CHANCE_SEED = 25
+
+
+def chance_expected_hits(values: pd.DataFrame, specs: list, windows: dict, draws: int = CHANCE_DRAWS,
+                         seed: int = CHANCE_SEED) -> dict:
+    """R25: expected hits if each corridor's number of stretches were drawn at random (without replacement) from the
+    weekday stretches with service. specs: [(n_stretches, [peaks])]. Seeded simulation; a hit means a drawn stretch is
+    in the top decile of its peak window (same rule as corridor_hit)."""
+    per = {}
+    for pk, w in windows.items():
+        sub = values[(values["window_start_min"] >= w[0]) & (values["window_start_min"] < w[1])]
+        per[pk] = sub.groupby("pair_id")["rm_per_km"].sum()
+    universe = sorted(set().union(*[set(v.index) for v in per.values()])) if per else []
+    if not universe:
+        return {"method": "none", "expected_hits": 0.0, "per_corridor": [0.0] * len(specs)}
+    arr = {pk: v.reindex(universe).fillna(0.0).to_numpy() for pk, v in per.items()}
+    top = {pk: (arr[pk] >= (per[pk].quantile(CORRIDOR_TOP_QUANTILE) if len(per[pk]) else np.inf)) & (arr[pk] > 0)
+           for pk in arr}
+    rng = np.random.default_rng(seed)
+    probs = []
+    for n, peaks in specs:
+        n = min(int(n), len(universe))
+        if n == 0:
+            probs.append(0.0)
+            continue
+        hits = 0
+        for _ in range(draws):
+            idx = rng.choice(len(universe), size=n, replace=False)
+            hits += any(top[pk][idx].any() for pk in peaks)
+        probs.append(hits / draws)
+    return {"method": f"seeded simulation, {draws} draws per corridor, seed {seed}, stretches drawn without "
+                      f"replacement from the {len(universe):,} weekday stretches with service",
+            "expected_hits": float(sum(probs)), "per_corridor": probs}
+
+
 def _mean(xs):
     xs = [x for x in xs if x is not None]
     return float(np.mean(xs)) if xs else None
@@ -548,7 +584,12 @@ def corridors(con, exp) -> dict:
         cs = [c for c in out if c["grade"] == g]
         summ[g] = {"hits": sum(c["hit"] for c in cs), "total": len(cs)}
     summ["all"] = {"hits": sum(c["hit"] for c in out), "total": len(out)}
-    return {"corridors": out, "by_grade": summ, "top_quantile": CORRIDOR_TOP_QUANTILE,
+    ch = chance_expected_hits(cv, [(c["mapped_stretches"], c["peak"]) for c in out], windows)
+    for c, pr in zip(out, ch["per_corridor"]):
+        c["chance_hit_simulated"] = pr
+    both_hits = sum(c["hit_both_ends_only"] for c in out)
+    return {"corridors": out, "by_grade": summ, "hits_both_ends": both_hits, "chance": ch,
+            "top_decile_share": _mean([c["top_decile_share"] for c in out]), "top_decile_chance": 1 - CORRIDOR_TOP_QUANTILE, "top_quantile": CORRIDOR_TOP_QUANTILE,
             "windows": {k: [v[0], v[1]] for k, v in windows.items()},
             "mapping": "A stretch is mapped when either end's stop name is in the corridor's list "
                        "(and, where a direction is stated, it heads that way); both-ends is shown as a stricter reading. "
@@ -638,6 +679,9 @@ def published(con, exp) -> dict:
               "rho_source": "none: GPS aggregates not available, so every scheduled trip counts as run",
               "passings": int(km[1]), "passings_without_shape": int(km[2]),
               "published": 501_000.0, **published_check(float(km[0]) * rho, exp.dtc_bus_km)}
+    bus_km["basis"] = ("each scheduled trip's stretches once (one passing per trip per stop, stretch = stop k to k+1, "
+                       "rings capped at n_stops-1), on the feed's single service day (one service_id), the per-day "
+                       "basis of the published figure")
     bus_km["implied_rho"] = 501_000.0 / bus_km["model"] if bus_km["model"] else None
     lf = con.execute("""
         SELECT operator, sum(bus_km * people_mid) / sum(bus_km * seats), sum(bus_km), count(*)
@@ -897,6 +941,11 @@ def headline(con, gates, exp_res, rep, pub, sens, diag, repro) -> dict:
         "corridor_hits_weak": exp_res["corridors"]["by_grade"]["weak"]["hits"],
         "corridors_weak": exp_res["corridors"]["by_grade"]["weak"]["total"],
         "corridor_hits_total": exp_res["corridors"]["by_grade"]["all"]["hits"],
+        "corridor_hits_both_ends": exp_res["corridors"]["hits_both_ends"],
+        "corridor_hits_chance_expected": exp_res["corridors"]["chance"]["expected_hits"],
+        "corridor_hits_chance_method": exp_res["corridors"]["chance"]["method"],
+        "corridor_top_decile_share": exp_res["corridors"]["top_decile_share"],
+        "corridor_top_decile_chance": exp_res["corridors"]["top_decile_chance"],
         "corridor_top_decile_share_mean": _mean([c["top_decile_share"] for c in exp_res["corridors"]["corridors"]]),
         "corridor_chance_hit_mean": _mean([c["chance_hit_probability"] for c in exp_res["corridors"]["corridors"]]),
         "corridors_total": exp_res["corridors"]["by_grade"]["all"]["total"],
@@ -966,17 +1015,26 @@ def render_md(rep: dict) -> str:
       f"(08:00: {_num(h['dtc_factor_8h_alternative_window'], 3)} instead of {_num(h['dtc_factor_8h'], 3)}).")
     a(f"- Week to week: {_pct(h['unchanged_level_share'])} of commuter-facing cells (rider-weighted) keep their level "
       f"between two different weeks of the month; load correlation {_num(h['load_correlation_week_pairs'], 3)}. "
-      f"Dropping one week from the full month leaves {_pct(h['unchanged_level_share_leave_one_out'])} unchanged.")
+      f"A week held out lands inside the sampling range in {_pct(h['range_coverage_heldout'])} of cells. "
+      f"Secondary, not independent (the runs share three weeks): dropping one week from the full month leaves "
+      f"{_pct(h['unchanged_level_share_leave_one_out'])} unchanged.")
     a(f"- Pre-registered corridors: {h['corridor_hits_strong']} of {h['corridors_strong']} strong, "
       f"{h['corridor_hits_moderate']} of {h['corridors_moderate']} moderate, {h['corridor_hits_weak']} of "
-      f"{h['corridors_weak']} weak ({h['corridor_hits_total']} of {h['corridors_total']} in all). The rule is easy "
-      f"to meet: a random set of stretches of the same size would hit with probability "
-      f"{_pct(h['corridor_chance_hit_mean'], 0)} on average, and on average {_pct(h['corridor_top_decile_share_mean'])} "
-      f"of the mapped stretches are in the top decile (10% at random), so the hits are weak evidence.")
+      f"{h['corridors_weak']} weak; the primary rule's result, "
+      f"{h['corridor_hits_total']} of {h['corridors_total']} in all), but that rule turned out to be weak: "
+      f"{_num(h['corridor_hits_chance_expected'], 1)} of {h['corridors_total']} hits would be expected if the same "
+      f"number of stretches per corridor were drawn at random ({h['corridor_hits_chance_method']}). The informative "
+      f"readings are the enrichment (on average {_pct(h['corridor_top_decile_share'])} of mapped stretches are in the "
+      f"top decile, against {_pct(h['corridor_top_decile_chance'], 0)} at random) and the stricter both-ends mapping "
+      f"({h['corridor_hits_both_ends']} of {h['corridors_total']}).")
     a(f"- Published figures: modelled DTC bus-km {_num(h['dtc_bus_km_model'], 0)} per day against 501,000 "
       f"({_yn(h['dtc_bus_km_hit'])}; the schedule offers {_num(h['dtc_bus_km_model'] / h['dtc_bus_km_published'], 2)} "
       f"times the published figure, an implied rho of {_num(h['dtc_implied_rho'], 2)}); modelled load factor {_num(h['load_factor_model'], 3)} against the "
       f"0.78-0.89 band ({_yn(h['load_factor_hit'])}).")
+    a(f"- Scheduled DTC bus-km is {_num(h['dtc_bus_km_model'] / h['dtc_bus_km_published'], 2)} times the published "
+      f"figure (implied share of trips run about {_num(h['dtc_implied_rho'], 2)} if the published figure is right); "
+      f"until GPS-based trip counts are in, loads may be understated. The model figure counts each scheduled trip's "
+      f"segments once, on the feed's single service day, the same per-day basis as the published figure.")
     a(f"- Routes whose last stretches depend on the alighting correction: {h['alighting_sensitive_routes']}.")
     a(f"- Coverage: {_pct(h['bus_km_share_commuter_facing'])} of scheduled bus-km has a commuter-facing level, "
       f"{_pct(h['bus_km_share_many_tickets'])} rests on many tickets.")
@@ -1013,6 +1071,11 @@ def render_md(rep: dict) -> str:
     a("\n### The ten researched corridors\n")
     a(f"A corridor is a hit when one of its mapped stretches is in the top decile of weekday crowded "
       f"rider-minutes per km in its stated peak window. {e['corridors']['mapping']}.\n")
+    bg_all = e["corridors"]["by_grade"]["all"]
+    a(f"The primary rule turned out to be weak: {_num(e['corridors']['chance']['expected_hits'], 1)} of "
+      f"{bg_all['total']} hits are expected at random ({e['corridors']['chance']['method']}). The informative "
+      f"readings are the enrichment ({_pct(e['corridors']['top_decile_share'])} of mapped stretches in the top decile "
+      f"vs 10% at random) and the both-ends mapping ({e['corridors']['hits_both_ends']} of {bg_all['total']}).\n")
     rows = []
     for c in e["corridors"]["corridors"]:
         pk = "/".join(c["peak"])
