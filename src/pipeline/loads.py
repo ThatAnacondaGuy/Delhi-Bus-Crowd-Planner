@@ -646,7 +646,7 @@ def _scale(con, cells: str = "_cell") -> tuple[dict, dict, dict, set, list, dict
         cap_ops = {r for r in by if r in bounds and by[r] > 0 and (bounds[r] <= e if short else bounds[r] < e)}
         capped |= cap_ops
         ops[op] = {"e_op": e_op[op], "e_star": e, "ceiling": ceil, "ceiling_bound": bool(short and e >= ceil * (1 - 1e-9)),
-                   "capped_routes": len(cap_ops), "unallocated_share": unalloc}
+                   "capped_routes": len(cap_ops), "unallocated_share": max(unalloc, 0.0)}
     rows = [(r, er.get(r), bounds.get(r), r in capped) for r, _, _ in app]
     _register(con, "_er", pd.DataFrame(rows, columns=["route_id", "e_r", "bound", "capped"]).astype(
         {"route_id": "int64", "e_r": "float64", "bound": "float64", "capped": "bool"}))
