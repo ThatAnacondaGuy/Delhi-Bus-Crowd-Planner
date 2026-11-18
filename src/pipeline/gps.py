@@ -275,7 +275,37 @@ def load_aggregates(con, paths) -> bool:
                    least(1.0, (raw.observed_trips / raw.coverage + {RHO_SHRINK_TRIPS} * rr.rho_route)
                               / (raw.scheduled_trips + {RHO_SHRINK_TRIPS})) END AS rho_model
         FROM raw LEFT JOIN rr USING (route_id, day_type)""", [str(csv)])
+    _fill(con)
     return True
+
+
+def _fill(con) -> None:
+    """gps_rho_fill(route_id, hour, day_type, rho, rho_src): rho for every route x hour x day type, so no cell
+    defaults to 1 (that would give uncovered routes about 2.3x the buses of measured ones). Order: 'cell'
+    (rho_model) -> 'route' (route rho pooled over hours) -> 'op_hour' (operator x hour x day type, trip-weighted
+    over covered routes) -> 'op_day' (operator x day type). The last two are flagged rho_fallback in the output.
+    Only built when route_meta exists."""
+    if not con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'route_meta'").fetchall()[0][0]:
+        con.execute("DROP TABLE IF EXISTS gps_rho_fill")
+        return
+    con.execute("""CREATE OR REPLACE TABLE gps_rho_fill AS
+        WITH grid AS (SELECT m.route_id, m.operator, h.hour, d.day_type FROM route_meta m,
+                      range(24) h(hour), (VALUES ('weekday'), ('weekend')) d(day_type)),
+        cov AS (SELECT g.*, m.operator FROM gps_route_hour g JOIN route_meta m USING (route_id)
+                WHERE g.source = 'gps' AND g.scheduled_trips > 0),
+        rt AS (SELECT route_id, day_type, least(1.0, sum(observed_trips / coverage) / sum(scheduled_trips)) AS rho
+               FROM cov GROUP BY 1, 2),
+        oh AS (SELECT operator, hour, day_type, least(1.0, sum(observed_trips / coverage) / sum(scheduled_trips)) AS rho
+               FROM cov GROUP BY 1, 2, 3),
+        od AS (SELECT operator, day_type, least(1.0, sum(observed_trips / coverage) / sum(scheduled_trips)) AS rho
+               FROM cov GROUP BY 1, 2)
+        SELECT grid.route_id, grid.hour, grid.day_type,
+               coalesce(g.rho_model, rt.rho, oh.rho, od.rho, 1.0) AS rho,
+               CASE WHEN g.rho_model IS NOT NULL THEN 'cell' WHEN rt.rho IS NOT NULL THEN 'route'
+                    WHEN oh.rho IS NOT NULL THEN 'op_hour' WHEN od.rho IS NOT NULL THEN 'op_day' ELSE 'none' END AS rho_src
+        FROM grid LEFT JOIN gps_route_hour g USING (route_id, hour, day_type)
+        LEFT JOIN rt USING (route_id, day_type) LEFT JOIN oh USING (operator, hour, day_type)
+        LEFT JOIN od USING (operator, day_type)""")
 
 
 def run(con, paths, gps_raw: bool = False, gps_days=None, **_) -> str:
@@ -287,6 +317,7 @@ def run(con, paths, gps_raw: bool = False, gps_days=None, **_) -> str:
         n, g = con.execute("SELECT count(*), count(rho_model) FROM gps_route_hour").fetchall()[0]
         return f"gps_route_hour {n:,} cells, {g:,} with rho"
     con.execute("DROP TABLE IF EXISTS gps_route_hour")
+    con.execute("DROP TABLE IF EXISTS gps_rho_fill")
     return "no GPS aggregates: rho = 1"
 
 

@@ -230,6 +230,16 @@ def test_gps_rho_model_by_day_type_and_schedule_only(con, tmp_path, toy_gtfs_dir
     assert (r.bus_source == "schedule").all() or r.empty     # NULL rho_model: rho = 1, flagged schedule
 
 
+def test_gps_rho_fill_flags_operator_fallback(con, tmp_path, toy_gtfs_dir):
+    paths = build(con, tmp_path, toy_gtfs_dir, [a2b(DAY, "08:00")])
+    con.execute("""CREATE TABLE gps_rho_fill AS SELECT 101::BIGINT AS route_id, h AS hour, d AS day_type, 0.5 AS rho,
+                   'op_hour' AS rho_src FROM range(24) t(h), (VALUES ('weekday'), ('weekend')) u(d)""")
+    loads.run_levels(con, paths)
+    r = cr(con, "route_id=101 AND seq=1 AND day_type='weekday' AND window_start_min=480").iloc[0]
+    assert r.buses == 3 and r.bus_source == "schedule" and "rho_fallback" in r["flags"]
+    assert con.execute("SELECT value FROM dq_levels WHERE name = 'rho_src_cells_op_hour'").fetchall()[0][0] > 0
+
+
 def test_outputs_and_planner_export(con, tmp_path, toy_gtfs_dir):
     paths = build(con, tmp_path, toy_gtfs_dir, [a2b(DAY, "08:00") for _ in range(3)])
     loads.run_levels(con, paths)

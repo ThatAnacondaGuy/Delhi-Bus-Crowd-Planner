@@ -555,6 +555,8 @@ def _rider_cells(con, skip=()) -> None:
 def _gps_rho(con) -> str | None:
     """How the GPS table is read: 'model' (Task 13: rho_model per route x hour x day type), 'plain' (a bare
     gps_route_hour(route_id, hour, rho)), or None (no table: rho = 1)."""
+    if _has(con, "gps_rho_fill"):
+        return "fill"
     if not _has(con, "gps_route_hour"):
         return None
     cols = {r[0] for r in con.execute("DESCRIBE gps_route_hour").fetchall()}
@@ -570,7 +572,11 @@ def _cells(con, nd: pd.DataFrame) -> None:
     mode = _gps_rho(con)
     rho = mode is not None
     col = "rho_model" if mode == "model" else "rho"
-    gjoin = " AND g.day_type = j.day_type" if mode == "model" else ""
+    gjoin = " AND g.day_type = j.day_type" if mode in ("model", "fill") else ""
+    gtab = "gps_rho_fill" if mode == "fill" else "gps_route_hour"
+    src_sql = "g.rho_src" if mode == "fill" else "NULL::VARCHAR"
+    if mode == "fill":
+        col = "rho"
     con.execute(f"""
         CREATE OR REPLACE TEMP TABLE _cell AS
         WITH j AS (
@@ -579,11 +585,12 @@ def _cells(con, nd: pd.DataFrame) -> None:
             FROM _ry y FULL OUTER JOIN _sup s USING (route_id, seq, day_type, w)),
         k AS (
             SELECT j.*, n.n_days, coalesce(h.rh, 0) AS rh, {f'least(1.0, coalesce(g.{col}, 1.0))' if rho else '1.0'} AS rho,
-                   {f'g.{col} IS NOT NULL' if rho else 'false'} AS has_gps
+                   {("g.rho_src = 'cell'" if mode == "fill" else f'g.{col} IS NOT NULL') if rho else 'false'} AS has_gps,
+                   {src_sql if rho else 'NULL::VARCHAR'} AS rho_src
             FROM j JOIN _pair USING (route_id, seq)
             JOIN _nd n ON n.day_type = j.day_type AND n.w = j.w
             LEFT JOIN _rh h ON h.route_id = j.route_id AND h.h = j.w // 60
-            {f"LEFT JOIN gps_route_hour g ON g.route_id = j.route_id AND g.hour = j.w // 60{gjoin}" if rho else ""}
+            {f"LEFT JOIN {gtab} g ON g.route_id = j.route_id AND g.hour = j.w // 60{gjoin}" if rho else ""}
             WHERE n.n_days > 0),
         t AS (
             SELECT k.*, CASE WHEN s_base > 0 THEN s_base WHEN sum_y > 0 AND s_wide > 0 THEN s_wide
@@ -592,7 +599,7 @@ def _cells(con, nd: pd.DataFrame) -> None:
                         WHEN sum_y > 0 AND (s_wide > 0 OR rh > 0) THEN 'widened'
                         WHEN sum_y > 0 THEN 'none' END AS src
             FROM k)
-        SELECT route_id, seq, day_type, w, sum_y, sum_y2, tickets, n_days, src, s_raw * rho AS s,
+        SELECT route_id, seq, day_type, w, sum_y, sum_y2, tickets, n_days, src, rho_src, s_raw * rho AS s,
                sum_y / n_days AS y_day,
                CASE WHEN s_raw > 0 THEN sum_y / n_days / (s_raw * rho) END AS l,
                CASE WHEN s_raw > 0 AND n_days > 1
@@ -700,7 +707,7 @@ def _build_crowding(con, out: str = "stretch_crowding", specs: str = "route_spec
                    p.from_name, p.to_name, c.day_type, c.w::INT AS window_start_min,
                    c.y_day AS app_riders, c.tickets, c.s AS buses, c.src AS bus_source,
                    b.share_9m, sp.seats, sp.rated_total, sp.crush, er.e_r * {e_mult} AS e_r, er.bound, er.capped,
-                   c.l, c.se_l, m.n_stops,
+                   c.l, c.se_l, m.n_stops, c.rho_src,
                    coalesce(r.no_data, true) AS route_no_data,
                    (c.src = 'none') AS mismatch,
                    (lw.route_id IS NOT NULL) AS low_use,
@@ -742,7 +749,8 @@ def _build_crowding(con, out: str = "stretch_crowding", specs: str = "route_spec
                               CASE WHEN low_use THEN 'low_app_use' END,
                               CASE WHEN mismatch THEN 'schedule_mismatch' END,
                               CASE WHEN alight THEN 'alighting_sensitive' END,
-                              CASE WHEN office THEN 'office_special' END) AS flags
+                              CASE WHEN office THEN 'office_special' END,
+                              CASE WHEN rho_src IN ('op_hour', 'op_day') THEN 'rho_fallback' END) AS flags
         FROM lvl ORDER BY route_id, day_type, seq, window_start_min""")
 
 
@@ -898,6 +906,15 @@ def run_levels(con, paths, gate: bool = True, **_) -> LevelStats:
           ("corridor_pairs", n_pairs), ("no_data_routes", n_nd)] + [(f"e_op_{k}", v) for k, v in e_op.items()] + [
         (f"e_star_{k}", v) for k, v in e_star.items()] + [
         (f"{k}_{f}", float(v)) for k, o in ops.items() for f, v in o.items()]
+    for src, n, share in con.execute("""
+            SELECT coalesce(rho_src, 'none'), count(*), sum(buses * coalesce(sh.length_m, 0))
+                   / nullif(sum(sum(buses * coalesce(sh.length_m, 0))) OVER (), 0)
+            FROM (SELECT c.buses, c.route_id, c.seq, g.rho_src FROM stretch_crowding c
+                  LEFT JOIN _cell g ON g.route_id = c.route_id AND g.seq = c.seq AND g.day_type = c.day_type
+                                   AND g.w = c.window_start_min) c
+            LEFT JOIN segment_shapes sh ON sh.route_id = c.route_id AND sh.seq = c.seq + 1
+            GROUP BY 1""").fetchall():
+        dq += [(f"rho_src_cells_{src}", float(n)), (f"rho_src_bus_km_share_{src}", float(share or 0.0))]
     _register(con, "_dq", pd.DataFrame(dq, columns=["name", "value"]).astype({"value": float}))
     con.execute("CREATE OR REPLACE TABLE dq_levels AS SELECT * FROM _dq")
     _print_report(stats)

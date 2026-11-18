@@ -99,3 +99,27 @@ def test_rho_model_shrinks_small_cells_and_caps(tmp_path):
     assert abs(rm[10109] - 3 * route_rho / 4) < 1e-9       # pulled up from 0 toward the route's rho
     assert rm[10110] == 1.0                                # capped
     assert rm[10209] is None                               # schedule only: no rho
+
+
+def test_fill_order_cell_route_operator(tmp_path):
+    d = tmp_path / "agg"
+    d.mkdir()
+    head = "route_id,hour,day_type,observed_trips,scheduled_trips,coverage,rho,rho_first,rho_mid,rho_last,runtime_ratio,source\n"
+    (d / "gps_route_hour.csv").write_text(head +
+        "101,9,weekday,4,8,1.0,0.5,,,,,gps\n"
+        "101,10,weekday,0,0,1.0,,,,,,gps\n"
+        "102,9,weekday,2,8,1.0,0.25,,,,,gps\n"
+        "103,9,weekday,,5,0.5,,,,,,schedule_only\n")
+    base = Paths.default()
+    paths = Paths(base.repo, base.gtfs_dir, base.tickets_csv, base.gps_archive, d, tmp_path)
+    con = connect()
+    con.execute("CREATE TABLE route_meta AS SELECT * FROM (VALUES (101::BIGINT,'DTC'),(102,'DTC'),(103,'DTC'),(104,'DIMTS')) t(route_id, operator)")
+    assert gps.load_aggregates(con, paths)
+    f = {(r, h): (rho, s) for r, h, rho, s in con.execute(
+        "SELECT route_id, hour, rho, rho_src FROM gps_rho_fill WHERE day_type = 'weekday'").fetchall()}
+    assert f[(101, 9)][1] == "cell"
+    assert f[(101, 10)][1] == "route" and abs(f[(101, 10)][0] - 0.5) < 0.2
+    op_hour = (4 + 2) / 16
+    assert f[(103, 9)][1] == "op_hour" and abs(f[(103, 9)][0] - op_hour) < 1e-9
+    assert f[(103, 3)][1] == "op_day" and abs(f[(103, 3)][0] - op_hour) < 1e-9
+    assert f[(104, 9)][1] == "none" and f[(104, 9)][0] == 1.0

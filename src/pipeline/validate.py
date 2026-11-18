@@ -663,6 +663,25 @@ def _scx(con) -> None:
         FROM stretch_crowding c LEFT JOIN segment_shapes sh ON sh.route_id = c.route_id AND sh.seq = c.seq + 1""")
 
 
+def full_allocation_load_factor(con) -> dict:
+    """The other end of the bracket: capacity bound off, so the published ridership is placed in full (E = the
+    operator scale on every route). `uncapped` lets a bus carry more than crush; `capped_at_crush` shows the same
+    cells with people on board capped at crush, as the map shows them."""
+    _prepare_cells(con)
+    _levels(con, "_lv_full", use_bound=False)
+    rows = con.execute("""
+        WITH v AS (
+            SELECT c.operator, c.buses * 30.0 / 90 * coalesce(sh.length_m, 0) / 1000.0 AS bus_km, c.seats,
+                   c."E_r" * c.app_riders / nullif(c.buses, 0) AS raw, c.people_mid
+            FROM _lv_full c LEFT JOIN segment_shapes sh ON sh.route_id = c.route_id AND sh.seq = c.seq + 1
+            WHERE c.day_type = 'weekday' AND c.level <> 'no_data' AND c.buses > 0)
+        SELECT operator, sum(bus_km * raw) / sum(bus_km * seats), sum(bus_km * people_mid) / sum(bus_km * seats)
+        FROM v WHERE bus_km > 0 GROUP BY ROLLUP(operator) ORDER BY operator NULLS LAST""").fetchall()
+    out = {(r[0] or "all"): {"uncapped": float(r[1]), "capped_at_crush": float(r[2])} for r in rows}
+    allv = out.get("all", {"uncapped": float("nan"), "capped_at_crush": float("nan")})
+    return {"all": allv, "by_operator": out}
+
+
 def published(con, exp) -> dict:
     km = con.execute("""
         SELECT coalesce(sum(sh.length_m) / 1000.0, 0), count(*), count(*) FILTER (WHERE sh.length_m IS NULL)
@@ -717,6 +736,7 @@ def published(con, exp) -> dict:
                    "published_note": "DTC 88-89%, cluster 78% (Economic Survey of Delhi 2025-26, ch. 12); "
                                      "definitions differ, so this is a rough check",
                    **published_check(allv["load_factor"], exp.load_factor_band)}
+    load_factor["full_allocation"] = full_allocation_load_factor(con)
     return {"dtc_bus_km": bus_km, "load_factor": load_factor}
 
 
@@ -1023,6 +1043,17 @@ def headline(con, gates, exp_res, rep, pub, sens, diag, repro) -> dict:
         "bus_km_share_commuter_facing": cov["all"].get("commuter_facing"),
         "bus_km_share_many_tickets": cov["all"].get("many_tickets"),
         "gps_available": pub["dtc_bus_km"]["gps"],
+        "load_factor_full_allocation": pub["load_factor"]["full_allocation"]["all"]["uncapped"],
+        "load_factor_full_allocation_capped_at_crush": pub["load_factor"]["full_allocation"]["all"]["capped_at_crush"],
+        "load_factor_full_allocation_dtc":
+            pub["load_factor"]["full_allocation"]["by_operator"].get("DTC", {}).get("uncapped"),
+        "load_factor_full_allocation_dimts":
+            pub["load_factor"]["full_allocation"]["by_operator"].get("DIMTS", {}).get("uncapped"),
+        "rho_dtc_bus_km_weighted": pub["dtc_bus_km"]["rho"],
+        "rho_routes_covered_share": diag["gps_rho"].get("weekday", {}).get("share_coverage_80"),
+        "rho_fallback_bus_km_share": con.execute("""
+            SELECT coalesce(sum(bus_km) FILTER (WHERE flags LIKE '%rho_fallback%') / nullif(sum(bus_km), 0), 0)
+            FROM _scx WHERE day_type = 'weekday' AND bus_km > 0""").fetchall()[0][0],
     }
     for k, v in sens.items():
         h[f"sensitivity_{k}"] = v["share_changed"]
@@ -1195,6 +1226,19 @@ def render_md(rep: dict) -> str:
       f"{_num(lf['by_operator'].get('DTC', {}).get('load_factor'), 3)}, cluster "
       f"{_num(lf['by_operator'].get('DIMTS', {}).get('load_factor'), 3)}, over {_pct(lf['coverage_bus_km_share'])} of "
       f"weekday bus-km that has a commuter-facing level.\n")
+
+    fa = lf["full_allocation"]
+    a(f"\n**Load factor bracket.** With the model as it stands (people on a bus never exceed the crush load, riders "
+      f"that no bus can carry are left unplaced) the weekday load factor is {_num(lf['model'], 3)}; with the "
+      f"capacity bound off and the published ridership placed in full it is {_num(fa['all']['uncapped'], 3)} "
+      f"({_num(fa['all']['capped_at_crush'], 3)} if people on board are still capped at crush), against the published "
+      f"0.78-0.89. Unallocated share of published ridership: DTC {_pct(h['unallocated_share_dtc'])}, cluster "
+      f"{_pct(h['unallocated_share_dimts'])}. Published ridership, the GPS-measured trips that ran (DTC bus-km "
+      f"{_num(bk['model'], 0)} against the published {_num(bk['published'], 0)}) and the crush capacity do not fit "
+      f"together. The model never puts more than the crush load on a bus, so on capped routes the crowding shown is "
+      f"a conservative (lower) estimate; the true load factor lies between the two cases. The 80%-of-stops rule for "
+      f"a trip that ran is conservative; the bus-km agreement ({_num(bk['rho'], 2)} against the implied "
+      f"{_num(bk['implied_rho'], 2)}) supports it.\n")
 
     a("## E. Sensitivity\n")
     a("Share of commuter-facing cells (shared with the base case) whose level changes.\n")

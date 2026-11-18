@@ -109,11 +109,11 @@ Rider-minute gate deviation: 0.0202% (limit 0.5%).
 | Name | Value |
 |---|---|
 | rows | 3,384,288 |
-| capped_routes | 1,255 |
+| capped_routes | 1,257 |
 | s0_widened_share | 0.0169 |
 | s0_mismatch_share | 0.0072 |
 | dropped_rider_share | 0.0001 |
-| corridor_pairs | 13,551 |
+| corridor_pairs | 13,144 |
 | no_data_routes | 603 |
 | e_op_DTC | 34.8097 |
 | e_op_DIMTS | 77.1806 |
@@ -123,13 +123,19 @@ Rider-minute gate deviation: 0.0202% (limit 0.5%).
 | DTC_e_star | 104 |
 | DTC_ceiling | 104 |
 | DTC_ceiling_bound | 1.0000 |
-| DTC_capped_routes | 845 |
-| DTC_unallocated_share | 0.5775 |
+| DTC_capped_routes | 847 |
+| DTC_unallocated_share | 0.5920 |
 | DIMTS_e_op | 77.1806 |
 | DIMTS_e_star | 232 |
 | DIMTS_ceiling | 232 |
 | DIMTS_ceiling_bound | 1.0000 |
 | DIMTS_capped_routes | 410 |
-| DIMTS_unallocated_share | 0.7199 |
+| DIMTS_unallocated_share | 0.7317 |
+| rho_src_cells_route | 749,601 |
+| rho_src_bus_km_share_route | 0.0920 |
+| rho_src_cells_cell | 2,320,345 |
+| rho_src_bus_km_share_cell | 0.8262 |
+| rho_src_cells_op_hour | 314,342 |
+| rho_src_bus_km_share_op_hour | 0.0818 |
 
-The E* ceiling is 3 x E_op. DTC: ceiling binds, unallocated 57.8%. Cluster: ceiling binds, unallocated 72.0% of published ridership.
+The E* ceiling is 3 x E_op. DTC: ceiling binds, unallocated 59.2%. Cluster: ceiling binds, unallocated 73.2% of published ridership.
