@@ -122,3 +122,17 @@ EVIDENCE_COPY: dict[str, tuple[str, str]] = {
     "none": ("No data", "जानकारी नहीं"),
 }
 FULL_COPY = ("Full buses may not stop", "भरी बस शायद न रुके")
+
+# Network assets (Task 8)
+IS_AC_MIN_TICKETS = 5   # a route's non-AC share comes from is_ac only with at least this many tickets
+# Service classes, matched case-insensitively against route_short_name and route_long_name; first match wins
+# in this order. Built from the real routes.txt (route_desc holds stop names, so it is not matched).
+# school: MSB (Modern School Barakhamba), SPV (Sardar Patel Vidyalaya), MSVV (Modern School Vasant Vihar),
+#   AS (Anchal School), or "school" in the long name. daf: DAF- (Delhi Administration Flats).
+# office_special: DS-, U-SPL- (university specials) and CV- (Central Vista office circulars); weekdays only.
+SERVICE_CLASS_PATTERNS: dict[str, str] = {
+    "daf": r"^DAF-",
+    "school": r"^(MSB|SPV|MSVV|AS)\d|\bSCHOOL\b",
+    "office_special": r"^(DS|U-SPL|CV)-",
+}
+HUB_STOP_CATEGORIES = {"metro": r"\bmetro\b", "rail": r"\b(railway|rly)\b"}

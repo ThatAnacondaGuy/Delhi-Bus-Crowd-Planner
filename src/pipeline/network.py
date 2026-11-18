@@ -4,14 +4,19 @@ The GTFS template run times are free-flow. Linked tickets (same vehicle, route a
 run times between two boarding stops, so each operator x hour gets a factor = observed / template.
 Everything later asks `Clock` for timing, so one corrected clock is used throughout.
 """
+import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
-from .config import EXCLUDED_DATES, EXCLUDED_WINDOWS
+from .config import (BUS_SPECS, DEVI_ROUTE_SHARE, DEVI_VEHICLE_MIN_TICKETS, EXCLUDED_DATES, EXCLUDED_WINDOWS,
+                     HUB_STOP_CATEGORIES, IS_AC_MIN_TICKETS, PLACE_RADIUS_M, SERVICE_CLASS_PATTERNS)
 from .errors import GateError
+from .resolve import haversine_m
 
 MIN_ROUTE_PAIRS = 30        # route-scope factor is used only with at least this many pairs
 MIN_TEMPLATE_S = 600        # pairs shorter than this (template seconds) are ignored
@@ -265,4 +270,290 @@ def run_clock(con, paths, **_) -> ClockStats:
                                    "WHERE scope='operator' AND hour IN (8, 18) ORDER BY key, hour").fetchall():
         print(f"network: {op} {h:02d}h factor {f:.3f} ({n:,} pairs)")
     print(f"network: {stats}")
+    return stats
+
+
+# ---------------------------------------------------------------- bus types, service class
+
+def _devi_vehicles(con) -> None:
+    con.execute(f"""
+        CREATE OR REPLACE TABLE devi_vehicles AS
+        SELECT t.vehicle FROM tickets_resolved t JOIN route_meta m USING (route_id)
+        WHERE m.is_devi AND t.vehicle IS NOT NULL
+        GROUP BY t.vehicle HAVING count(*) >= {DEVI_VEHICLE_MIN_TICKETS} ORDER BY t.vehicle""")
+
+
+def build_bus_mix(con) -> None:
+    """bus_mix per route_id: D- routes are 9 m; other routes follow the vehicle rule, else the is_ac mix."""
+    _devi_vehicles(con)
+    con.execute(f"""
+        CREATE OR REPLACE TABLE bus_mix AS
+        WITH v AS (
+            SELECT t.route_id,
+                   count(*) FILTER (WHERE t.vehicle IS NOT NULL) AS n_veh,
+                   count(*) FILTER (WHERE d.vehicle IS NOT NULL) AS n_devi
+            FROM tickets_resolved t LEFT JOIN devi_vehicles d ON d.vehicle = t.vehicle GROUP BY t.route_id),
+        r AS (SELECT m.route_id, m.is_devi,
+                     CASE WHEN v.n_veh > 0 THEN v.n_devi::DOUBLE / v.n_veh ELSE 0 END AS dshare
+              FROM route_meta m LEFT JOIN v USING (route_id)),
+        a AS (  -- is_ac mix over tickets not on 9 m vehicles
+            SELECT t.route_id, count(t.is_ac) AS n_ac,
+                   avg(CASE WHEN t.is_ac THEN 0.0 ELSE 1.0 END) AS nonac
+            FROM tickets_resolved t LEFT JOIN devi_vehicles d ON d.vehicle = t.vehicle
+            WHERE d.vehicle IS NULL GROUP BY t.route_id),
+        j AS (SELECT r.route_id, r.is_devi, r.dshare >= {DEVI_ROUTE_SHARE} AND NOT r.is_devi AS by_vehicle,
+                     r.dshare, a.n_ac, coalesce(a.nonac, 0) AS nonac
+              FROM r LEFT JOIN a USING (route_id)),
+        s AS (SELECT route_id, is_devi, by_vehicle, n_ac, nonac,
+                     CASE WHEN is_devi THEN 1.0 WHEN by_vehicle THEN dshare ELSE 0.0 END AS s9
+              FROM j)
+        SELECT route_id::BIGINT AS route_id, s9::DOUBLE AS share_9m,
+               CASE WHEN is_devi THEN 0.0 WHEN coalesce(n_ac, 0) >= {IS_AC_MIN_TICKETS}
+                    THEN (1 - s9) * nonac ELSE 0.0 END::DOUBLE AS share_12m_nonac,
+               CASE WHEN is_devi THEN 0.0 WHEN coalesce(n_ac, 0) >= {IS_AC_MIN_TICKETS}
+                    THEN (1 - s9) * (1 - nonac) ELSE 1 - s9 END::DOUBLE AS share_12m_ac,
+               CASE WHEN is_devi THEN 'devi_name' WHEN by_vehicle THEN 'vehicle_rule'
+                    WHEN coalesce(n_ac, 0) >= {IS_AC_MIN_TICKETS} THEN 'is_ac' ELSE 'default' END AS basis
+        FROM s ORDER BY route_id""")
+    s9, s12, sn = (BUS_SPECS["9m_devi"], BUS_SPECS["12m_ac"], BUS_SPECS["12m_nonac"])
+    con.execute(f"""
+        CREATE OR REPLACE TABLE route_specs AS
+        SELECT route_id,
+               share_9m * {s9.seats} + share_12m_ac * {s12.seats} + share_12m_nonac * {sn.seats} AS seats,
+               share_9m * {s9.rated_total} + share_12m_ac * {s12.rated_total}
+                   + share_12m_nonac * {sn.rated_total} AS rated_total,
+               share_9m * {s9.crush} + share_12m_ac * {s12.crush} + share_12m_nonac * {sn.crush} AS crush
+        FROM bus_mix ORDER BY route_id""")
+
+
+def build_service_class(con, paths) -> None:
+    """service_class per GTFS route_id from SERVICE_CLASS_PATTERNS (first match; else regular)."""
+    rows = con.execute("SELECT route_id::BIGINT, route_short_name, route_long_name "
+                       "FROM read_csv(?, header=true, all_varchar=true)",
+                       [str(Path(paths.gtfs_dir) / "routes.txt")]).fetchall()
+    pats = {c: re.compile(p, re.I) for c, p in SERVICE_CLASS_PATTERNS.items()}
+    out = []
+    for rid, short, long_ in rows:
+        names = [(short or "").strip(), (long_ or "").strip()]
+        cls = next((c for c, p in pats.items() if any(p.search(n) for n in names)), "regular")
+        out.append((rid, cls))
+    _write(con, "service_class", pd.DataFrame(out, columns=["route_id", "class"]).astype({"route_id": "int64"}))
+
+
+# ---------------------------------------------------------------- places and hub aliases
+
+_STEM_DROP = re.compile(r"\(.*?\)|\bopp\b|\bterminal\b|\bmetro station\b|\bbus stop\b")
+
+
+def name_stem(name: str) -> str:
+    low = (name or "").lower()
+    s = re.sub(r"[^a-z0-9 ]+", " ", _STEM_DROP.sub(" ", low))
+    s = re.sub(r"\s+", " ", s).strip()
+    return s or re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", " ", low)).strip()
+
+
+def _group_places(stops: list[tuple[str, str, float, float]]) -> dict[str, int]:
+    """stop_id -> place number: same stem and within PLACE_RADIUS_M of each other (single linkage)."""
+    parent = {s[0]: s[0] for s in stops}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    by_stem: dict[str, list] = {}
+    for s in stops:
+        by_stem.setdefault(name_stem(s[1]), []).append(s)
+    for grp in by_stem.values():
+        for i in range(len(grp)):
+            for j in range(i + 1, len(grp)):
+                if haversine_m(grp[i][2], grp[i][3], grp[j][2], grp[j][3]) <= PLACE_RADIUS_M:
+                    parent[find(grp[i][0])] = find(grp[j][0])
+    roots: dict[str, int] = {}
+    out = {}
+    for sid, *_ in sorted(stops, key=lambda s: (_stop_key(s[0]))):
+        out[sid] = roots.setdefault(find(sid), len(roots) + 1)
+    return out
+
+
+def _stop_key(stop_id: str):
+    return (0, int(stop_id), "") if stop_id.isdigit() else (1, 0, stop_id)
+
+
+def _hub_place(hub_stems: list[str], stops, place_of: dict[str, int]) -> int | None:
+    pats = [re.compile(rf"(?<![a-z0-9]){re.escape(s)}(?![a-z0-9])") for s in hub_stems]
+    cats = {c: re.compile(p, re.I) for c, p in HUB_STOP_CATEGORIES.items()}
+    size: dict[int, int] = {}
+    for s in stops:
+        size[place_of[s[0]]] = size.get(place_of[s[0]], 0) + 1
+    best = None
+    for sid, name, _la, _lo in stops:
+        stem = name_stem(name)
+        full = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", " ", name.lower())).strip()  # keeps "( Connaught Place )"
+        in_stem = any(p.search(stem) for p in pats)
+        if not in_stem and not any(p.search(full) for p in pats):
+            continue
+        pid = place_of[sid]
+        rank = (any(c.search(name) for c in cats.values()), not in_stem,
+                (hub_stems.index(stem) if stem in hub_stems else len(hub_stems)), -size[pid], pid)
+        if best is None or rank < best[0]:
+            best = (rank, pid)
+    return best[1] if best else None
+
+
+def build_places(con, paths) -> None:
+    rows = con.execute("SELECT trim(stop_id), trim(stop_name), stop_lat::DOUBLE, stop_lon::DOUBLE "
+                       "FROM read_csv(?, header=true, all_varchar=true) "
+                       "WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL",
+                       [str(Path(paths.gtfs_dir) / "stops.txt")]).fetchall()
+    place_of = _group_places(rows)
+    names: dict[int, str] = {}
+    for sid, name, *_ in sorted(rows, key=lambda s: (len(s[1]), s[1])):
+        names.setdefault(place_of[sid], name)
+    df = pd.DataFrame([(place_of[sid], names[place_of[sid]], sid, la, lo) for sid, _n, la, lo in rows],
+                      columns=["place_id", "name", "stop_id", "lat", "lon"]).astype({"place_id": "int64"})
+    _write(con, "places", df.sort_values(["place_id", "stop_id"]).reset_index(drop=True))
+    hubs = yaml.safe_load((Path(__file__).parent / "hubs.yaml").read_text(encoding="utf-8"))
+    alias_rows, missing = {}, []
+    for hub, spec in hubs.items():
+        pid = _hub_place([s.lower() for s in spec["gtfs_stems"]], rows, place_of)
+        if pid is None:
+            missing.append(hub)
+            continue
+        for a in [hub.lower(), *spec.get("aliases", []), *spec["gtfs_stems"]]:
+            alias_rows.setdefault(a.lower(), pid)
+    _write(con, "hub_alias", pd.DataFrame(sorted(alias_rows.items()), columns=["alias", "place_id"])
+           .astype({"place_id": "int64"}))
+    if missing:
+        print(f"network: hubs without a matching stop: {', '.join(missing)}")
+
+
+# ---------------------------------------------------------------- segment shapes
+
+def _project(pts: np.ndarray, lat0: float, k: float) -> np.ndarray:
+    return np.column_stack([pts[:, 1] * k, pts[:, 0]]) * 111_195.0
+
+
+def slice_segments(shape: np.ndarray, stops: np.ndarray, k_cands: int = 6) -> list[list[list[float]]]:
+    """One coordinate list per consecutive stop pair. Each stop is projected onto the shape; positions along
+    the shape never move backwards (dynamic programme over the nearest candidate segments)."""
+    lat0 = float(np.mean(shape[:, 0]))
+    k = np.cos(np.radians(lat0))
+    P, Q = _project(shape, lat0, k), _project(stops, lat0, k)
+    A, B = P[:-1], P[1:]
+    ab = B - A
+    seg_len = np.hypot(ab[:, 0], ab[:, 1])
+    cum = np.concatenate([[0.0], np.cumsum(seg_len)])
+    denom = np.where(seg_len > 0, seg_len ** 2, 1.0)
+    n, m = len(Q), len(A)
+    cand_pos, cand_pt, cand_cost = [], [], []
+    for q in Q:
+        t = np.clip(((q - A) * ab).sum(1) / denom, 0.0, 1.0)
+        proj = A + ab * t[:, None]
+        d = np.hypot(*(proj - q).T)
+        idx = np.argsort(d, kind="stable")[:k_cands]
+        cand_pos.append(cum[idx] + t[idx] * seg_len[idx])
+        cand_pt.append(np.column_stack([idx, t[idx]]))
+        cand_cost.append(d[idx])
+    cost = [cand_cost[0].copy()]
+    back = []
+    for i in range(1, n):
+        c = np.full(len(cand_pos[i]), np.inf)
+        bk = np.zeros(len(c), dtype=int)
+        for b, pos in enumerate(cand_pos[i]):
+            ok = cand_pos[i - 1] <= pos + 1e-6
+            if ok.any():
+                prev = np.where(ok, cost[-1], np.inf)
+                bk[b] = int(np.argmin(prev))
+                c[b] = prev[bk[b]] + cand_cost[i][b]
+        if not np.isfinite(c).any():  # no monotone choice: stay on the previous position
+            c = cand_cost[i] + cost[-1].min()
+            bk[:] = int(np.argmin(cost[-1]))
+            for b in range(len(c)):
+                cand_pos[i][b] = max(cand_pos[i][b], cand_pos[i - 1][bk[b]])
+        cost.append(c)
+        back.append(bk)
+    choice = [int(np.argmin(cost[-1]))]
+    for bk in reversed(back):
+        choice.append(int(bk[choice[-1]]))
+    choice.reverse()
+    pos = [float(cand_pos[i][c]) for i, c in enumerate(choice)]
+    for i in range(1, n):
+        pos[i] = max(pos[i], pos[i - 1])
+    pts = []
+    for i, c in enumerate(choice):
+        j, t = int(cand_pt[i][c][0]), float(cand_pt[i][c][1])
+        a, b = shape[j], shape[j + 1]
+        pts.append(a + (b - a) * t)
+    out = []
+    for i in range(n - 1):
+        lo = int(np.searchsorted(cum, pos[i], side="right"))
+        hi = int(np.searchsorted(cum, pos[i + 1], side="left"))
+        mid = [shape[v] for v in range(lo, hi) if pos[i] < cum[v] < pos[i + 1]]
+        out.append([pts[i], *mid, pts[i + 1]])
+    return [[[round(float(la), 6), round(float(lo_), 6)] for la, lo_ in seg] for seg in out]
+
+
+def _coords_len(coords: list[list[float]]) -> float:
+    return float(sum(haversine_m(a[0], a[1], b[0], b[1]) for a, b in zip(coords, coords[1:])))
+
+
+def build_segment_shapes(con, paths) -> tuple[int, int]:
+    """segment_shapes for every canonical route; returns (routes with a GTFS shape, total routes)."""
+    g = Path(paths.gtfs_dir)
+    con.execute("""
+        CREATE OR REPLACE TEMP TABLE _canon_shape AS
+        WITH n AS (SELECT route_id::BIGINT AS route_id, trim(trip_id) AS trip_id, trim(shape_id) AS shape_id
+                   FROM read_csv(?, header=true, all_varchar=true)),
+        c AS (SELECT trim(trip_id) AS trip_id, count(*) AS n FROM read_csv(?, header=true, all_varchar=true)
+              GROUP BY ALL)
+        SELECT n.route_id, n.shape_id FROM n JOIN c USING (trip_id)
+        QUALIFY row_number() OVER (PARTITION BY n.route_id ORDER BY c.n DESC, n.trip_id) = 1""",
+                [str(g / "trips.txt"), str(g / "stop_times.txt")])
+    shp = con.execute("""
+        SELECT trim(shape_id) AS shape_id, shape_pt_lat::DOUBLE AS shape_pt_lat,
+               shape_pt_lon::DOUBLE AS shape_pt_lon
+        FROM read_csv(?, header=true, all_varchar=true)
+        ORDER BY shape_id, shape_pt_sequence::INT""", [str(g / "shapes.txt")]).df()
+    shapes = {sid: grp[["shape_pt_lat", "shape_pt_lon"]].to_numpy() for sid, grp in shp.groupby("shape_id")}
+    sid_of = dict(con.execute("SELECT route_id, shape_id FROM _canon_shape").fetchall())
+    stops = con.execute("SELECT route_id, lat, lon FROM canonical_stops ORDER BY route_id, seq").df()
+    rows, with_shape, total = [], 0, 0
+    for rid, grp in stops.groupby("route_id"):
+        pts = grp[["lat", "lon"]].to_numpy()
+        if len(pts) < 2:
+            continue
+        total += 1
+        shape = shapes.get(sid_of.get(int(rid)))
+        if shape is not None and len(shape) >= 2:
+            with_shape += 1
+            segs = slice_segments(shape, pts)
+        else:
+            segs = [[[round(float(a[0]), 6), round(float(a[1]), 6)], [round(float(b[0]), 6), round(float(b[1]), 6)]]
+                    for a, b in zip(pts, pts[1:])]
+        for seq, coords in enumerate(segs, 2):
+            rows.append((int(rid), seq, json.dumps(coords), _coords_len(coords)))
+    df = pd.DataFrame(rows, columns=["route_id", "seq", "coords", "length_m"]).astype(
+        {"route_id": "int64", "seq": "int32", "length_m": "float64"})
+    _write(con, "segment_shapes", df)
+    return with_shape, total
+
+
+def run_network(con, paths, **kwargs) -> ClockStats:
+    stats = run_clock(con, paths, **kwargs)
+    build_bus_mix(con)
+    build_service_class(con, paths)
+    build_places(con, paths)
+    with_shape, total = build_segment_shapes(con, paths)
+    mix = con.execute("SELECT basis, count(*), sum((share_9m = 1)::INT) FROM bus_mix GROUP BY basis "
+                      "ORDER BY basis").fetchall()
+    classes = con.execute('SELECT "class", count(*) FROM service_class GROUP BY 1 ORDER BY 1').fetchall()
+    n_places = con.execute("SELECT count(DISTINCT place_id), count(*) FROM places").fetchall()[0]
+    dq = [(f"bus_mix_{b}", n) for b, n, _ in mix] + [(f"service_class_{c}", n) for c, n in classes] + [
+        ("places", n_places[0]), ("place_stops", n_places[1]), ("shapes_with_gtfs_shape", with_shape),
+        ("shapes_routes", total)]
+    _write(con, "dq_network", pd.DataFrame(dq, columns=["name", "value"]).astype({"value": float}))
+    print(f"network: bus mix {dict((b, n) for b, n, _ in mix)}; service classes {dict(classes)}; "
+          f"{n_places[0]:,} places from {n_places[1]:,} stops; shapes {with_shape:,}/{total:,} routes")
     return stats

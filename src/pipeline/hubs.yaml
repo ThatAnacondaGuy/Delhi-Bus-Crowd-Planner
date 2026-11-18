@@ -4,7 +4,7 @@ Connaught Place:
   gtfs_stems: [connaught place]
 ISBT Anand Vihar:
   aliases: [anand vihar isbt, isbt av, bus adda anand vihar]
-  gtfs_stems: [isbt anand vihar, anand vihar]
+  gtfs_stems: [isbt anand vihar, anand vihar isbt, anand vihar]
 Kashmere Gate:
   aliases: [kashmiri gate, isbt kashmere gate]
   gtfs_stems: [kashmere gate, kashmiri gate]
