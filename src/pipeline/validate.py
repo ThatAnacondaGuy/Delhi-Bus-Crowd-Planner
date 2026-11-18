@@ -1020,8 +1020,8 @@ def render_md(rep: dict) -> str:
       f"{_pct(h['unchanged_level_share_leave_one_out'])} unchanged.")
     a(f"- Pre-registered corridors: {h['corridor_hits_strong']} of {h['corridors_strong']} strong, "
       f"{h['corridor_hits_moderate']} of {h['corridors_moderate']} moderate, {h['corridor_hits_weak']} of "
-      f"{h['corridors_weak']} weak; the primary rule's result, "
-      f"{h['corridor_hits_total']} of {h['corridors_total']} in all), but that rule turned out to be weak: "
+      f"{h['corridors_weak']} weak), the primary rule's result: "
+      f"{h['corridor_hits_total']} of {h['corridors_total']} in all, but that rule turned out to be weak: "
       f"{_num(h['corridor_hits_chance_expected'], 1)} of {h['corridors_total']} hits would be expected if the same "
       f"number of stretches per corridor were drawn at random ({h['corridor_hits_chance_method']}). The informative "
       f"readings are the enrichment (on average {_pct(h['corridor_top_decile_share'])} of mapped stretches are in the "
