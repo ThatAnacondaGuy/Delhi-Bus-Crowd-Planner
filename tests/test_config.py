@@ -129,3 +129,8 @@ def test_make_tickets_header_and_defaults(tmp_path):
     assert lines[0] == ('"passenger_count","amount","vehicle_number","ticket_type_id",'
                         '"end_stop_name","route","start_stop_name","created_at","is_ac"')
     assert lines[1] == '"1","9.0","NULL","1","B","101UP","A","2026-10-14 08:00:00+05:30","True"'
+
+
+def test_published_sources_have_urls():
+    for src in [*PUBLISHED_RIDERSHIP.values(), config.PUBLISHED_DTC_BUS_KM]:
+        assert src.url.startswith("https://")

@@ -14,6 +14,8 @@ class BusSpec(NamedTuple):
     comfortable: int
 
 
+# Sources: research notes section 2 (DTC e-bus RFP cl. 28.2 and 2.1, CESL tender,
+# PTI/electrive for DEVI 23+13, JBM Ecolife e9 42).
 BUS_SPECS: dict[str, BusSpec] = {
     "12m_ac": BusSpec(35, 63, 100, 77),
     "9m_devi": BusSpec(23, 36, 42, 32),
@@ -28,11 +30,20 @@ class Source(NamedTuple):
     note: str
 
 
+_ES = "https://delhiplanning.delhi.gov.in/sites/default/files/Planning/12_chapter_12_transport.pdf"
 PUBLISHED_RIDERSHIP: dict[str, Source] = {
-    "DTC": Source(2_429_000, "FY2025-26", "", "Published average daily DTC ridership; add citation URL from research notes."),
-    "DIMTS": Source(1_530_000, "FY2024-25", "", "Published average daily DIMTS (cluster) ridership; add citation URL from research notes."),
+    "DTC": Source(2_429_000, "FY2025-26", _ES,
+                  "Economic Survey of Delhi 2025-26, ch. 12; see also "
+                  "https://www.millenniumpost.in/delhi/delhi-vehicle-count-up-79-to-876-lakh-653097"),
+    "DIMTS": Source(1_530_000, "FY2024-25",
+                    "https://www.newsbytesapp.com/news/auto/economic-survey-2025-26-finds-delhi-bus-ridership-down-nearly-20/story",
+                    "Reports Economic Survey of Delhi 2025-26 figures."),
 }
-PUBLISHED_DTC_BUS_KM = Source(501_000, "2025-26", "", "Published DTC daily bus-km; add citation URL from research notes.")
+PUBLISHED_DTC_BUS_KM = Source(501_000, "2025-26", _ES,
+                              "Economic Survey of Delhi 2025-26, ch. 12; see also "
+                              "https://dailypioneer.com/news/delhis-vehicle-count-hits-87-6-lakh-8-rise-in-2025-26")
+# Economic Survey of Delhi 2025-26, ch. 12: DTC 88.33-88.77% in 2024-26, cluster 78% in 2024-25.
+# Definitions differ from ours; rough check only.
 PUBLISHED_LOAD_FACTOR_BAND = (0.78, 0.89)
 
 # Calendar
