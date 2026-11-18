@@ -89,6 +89,7 @@ NO_DATA_PERCENTILE = 0.25
 DEVI_ROUTE_RE = r"^D-\d"
 DEVI_VEHICLE_MIN_TICKETS = 5
 DEVI_ROUTE_SHARE = 0.5
+VEHICLE_RULE_MIN_TICKETS = 5  # a non-D route needs this many vehicle-linked tickets for the vehicle rule
 PLACE_RADIUS_M = 400
 
 # Ticket resolution (design §5.3)

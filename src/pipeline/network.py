@@ -14,7 +14,8 @@ import pandas as pd
 import yaml
 
 from .config import (BUS_SPECS, DEVI_ROUTE_SHARE, DEVI_VEHICLE_MIN_TICKETS, EXCLUDED_DATES, EXCLUDED_WINDOWS,
-                     HUB_STOP_CATEGORIES, IS_AC_MIN_TICKETS, PLACE_RADIUS_M, SERVICE_CLASS_PATTERNS)
+                     HUB_STOP_CATEGORIES, IS_AC_MIN_TICKETS, PLACE_RADIUS_M, SERVICE_CLASS_PATTERNS,
+                     VEHICLE_RULE_MIN_TICKETS)
 from .errors import GateError
 from .resolve import haversine_m
 
@@ -293,7 +294,7 @@ def build_bus_mix(con) -> None:
                    count(*) FILTER (WHERE t.vehicle IS NOT NULL) AS n_veh,
                    count(*) FILTER (WHERE d.vehicle IS NOT NULL) AS n_devi
             FROM tickets_resolved t LEFT JOIN devi_vehicles d ON d.vehicle = t.vehicle GROUP BY t.route_id),
-        r AS (SELECT m.route_id, m.is_devi,
+        r AS (SELECT m.route_id, m.is_devi, coalesce(v.n_veh, 0) AS n_veh,
                      CASE WHEN v.n_veh > 0 THEN v.n_devi::DOUBLE / v.n_veh ELSE 0 END AS dshare
               FROM route_meta m LEFT JOIN v USING (route_id)),
         a AS (  -- is_ac mix over tickets not on 9 m vehicles
@@ -301,7 +302,8 @@ def build_bus_mix(con) -> None:
                    avg(CASE WHEN t.is_ac THEN 0.0 ELSE 1.0 END) AS nonac
             FROM tickets_resolved t LEFT JOIN devi_vehicles d ON d.vehicle = t.vehicle
             WHERE d.vehicle IS NULL GROUP BY t.route_id),
-        j AS (SELECT r.route_id, r.is_devi, r.dshare >= {DEVI_ROUTE_SHARE} AND NOT r.is_devi AS by_vehicle,
+        j AS (SELECT r.route_id, r.is_devi, r.dshare >= {DEVI_ROUTE_SHARE} AND r.n_veh >= {VEHICLE_RULE_MIN_TICKETS}
+                         AND NOT r.is_devi AS by_vehicle,
                      r.dshare, a.n_ac, coalesce(a.nonac, 0) AS nonac
               FROM r LEFT JOIN a USING (route_id)),
         s AS (SELECT route_id, is_devi, by_vehicle, n_ac, nonac,

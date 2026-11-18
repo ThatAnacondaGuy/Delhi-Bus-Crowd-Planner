@@ -137,3 +137,11 @@ def test_hub_prefers_most_specific_stem():
     stops = [("1", "Anand Vihar", 28.0, 77.0), ("2", "Anand Vihar ISBT Terminal", 28.1, 77.1)]
     place_of = network._group_places(stops)
     assert network._hub_place(["isbt anand vihar", "anand vihar isbt", "anand vihar"], stops, place_of) == place_of["2"]
+
+
+def test_vehicle_rule_needs_min_linked_tickets(con, tmp_path, toy_gtfs_dir):
+    rows = devi_rows(["DEVI1"]) + [tk("Delta Metro", "Echo Depot", "2026-09-01", f"09:{i:02d}", vehicle="DEVI1",
+                                      route="909UP") for i in range(4)]
+    run_assets(con, tmp_path, toy_gtfs_dir, rows)
+    s9, _, _, basis = mix(con, 501)
+    assert s9 == 0 and basis != "vehicle_rule"
