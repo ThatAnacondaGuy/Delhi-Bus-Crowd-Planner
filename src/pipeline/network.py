@@ -102,9 +102,10 @@ class Clock:
         """Template seconds of the segment ending at seq; on a ring, seq past N maps per R4 (k -> k - (N-1))."""
         t = self._tmpl[route_id]
         n = len(t)
+        if n <= 1:
+            return 0.0
         if seq > n:
-            seq -= n - 1
-            seq = (seq - 1) % (n - 1) + 1 if n > 1 else seq
+            seq = (seq - 2) % (n - 1) + 2  # repeated wraps land in 2..N, so the closing segment stays itself
         v = t[seq - 1]
         if v == 0 and seq > 1:
             nz = t[t > 0]

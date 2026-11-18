@@ -131,3 +131,6 @@ def test_ring_wrap_maps_per_r4():
     clock = network.Clock.from_frames(canon, pd.DataFrame(columns=["scope", "key", "hour", "factor", "n_pairs"]))
     assert clock.template(401, 4) == 424 and clock.template(401, 5) == 300  # seq 5 -> 2
     assert clock.travel_seconds(401, 3, 5, 480) == pytest.approx(424 + 300)
+    # up to 2N-1: seq 6 -> 3, seq 7 -> 4 (the closing segment again), seq 8 -> 2 (second wrap)
+    assert [clock.template(401, s) for s in (6, 7, 8)] == [300, 424, 300]
+    assert clock.travel_seconds(401, 3, 7, 480) == pytest.approx(424 + 300 + 300 + 424)

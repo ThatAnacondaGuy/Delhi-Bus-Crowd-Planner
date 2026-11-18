@@ -123,3 +123,23 @@ def test_uninformative_reverse_moves_nothing(con, tmp_path, toy_gtfs_dir):
     assert con.execute("SELECT moved_pax, alighting_sensitive FROM terminal_asymmetry WHERE route_id=101"
                        ).fetchall() == [(0.0, True)]
     assert stretch_totals(con)[4] == 6 and stats.moved_pax == 0
+
+
+def test_alighting_moves_only_within_fare_slab(con, tmp_path, toy_gtfs_dir, monkeypatch):
+    monkeypatch.setattr(loads, "ALIGHTING_MIN_REVERSE_BOARD", 1)
+    # Alpha->Bravo and Alpha->Charlie cost 9.0 (slab 10); Alpha->Delta and Alpha->Echo cost 13.5 (slab 15).
+    rows = [tk("Alpha Terminal", "Bravo Market", DAY, "09:00", amount=9.0)] * 2
+    rows += [tk("Alpha Terminal", "Charlie Chowk", DAY, "09:01", amount=9.0)] * 2
+    rows += [tk("Alpha Terminal", "Delta Metro", DAY, "09:02", amount=13.5)] * 2
+    rows += [tk("Alpha Terminal", "Echo Depot", DAY, f"08:0{i}", amount=13.5) for i in range(6)]
+    # reverse boardings at every intermediate stop and 2 at the terminal; alighting on 101 equals them
+    for stop, n in (("Echo Depot", 2), ("Delta Metro", 2), ("Charlie Chowk", 2), ("Bravo Market", 2)):
+        rows += [tk(stop, "Alpha Terminal", DAY, "10:00", route="101DOWN") for _ in range(n)]
+    paths = build(con, tmp_path, toy_gtfs_dir, rows)
+    loads.run_riders(con, paths)
+    # terminal tickets (fare 13.5): only Delta (slab 15) is a candidate; Bravo and Charlie (9.0) are not.
+    # 6 terminal pax against 2 reverse terminal boardings: 4 move, all onto Delta
+    tot = stretch_totals(con)
+    assert tot[1] == pytest.approx(12) and tot[2] == pytest.approx(10) and tot[3] == pytest.approx(8)
+    assert tot[4] == pytest.approx(2)  # stretch 3 keeps all 8 riders (2 Delta-bound + 6 terminal): no early drops
+    assert con.execute("SELECT moved_pax FROM terminal_asymmetry WHERE route_id=101").fetchone()[0] == pytest.approx(4)
