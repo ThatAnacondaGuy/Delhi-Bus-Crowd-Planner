@@ -3,6 +3,7 @@ import hashlib
 import json
 import subprocess
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -65,6 +66,13 @@ def _sha256(path: str, data: dict) -> str:
     return h.hexdigest()
 
 
+def _run_id(data: dict) -> str:
+    """IST timestamp plus a short hash of every finished stage's input checksums."""
+    sums = {name: rec.get("inputs", {}) for name, rec in sorted(data.get("stages", {}).items())}
+    short = hashlib.sha256(json.dumps(sums, sort_keys=True).encode()).hexdigest()[:8]
+    return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y%m%d-%H%M") + "-" + short
+
+
 def mark_done(stage: str, inputs: dict[str, str], outputs: list[str], params: dict | None = None,
               path=None) -> None:
     mp = _manifest_path(path)
@@ -77,6 +85,7 @@ def mark_done(stage: str, inputs: dict[str, str], outputs: list[str], params: di
         "outputs": [str(o) for o in outputs],
         "finished_at": datetime.now(timezone.utc).isoformat(),
     }
+    data["run_id"] = _run_id(data)
     _save(mp, data)
 
 

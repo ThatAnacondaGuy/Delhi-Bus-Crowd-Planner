@@ -1,351 +1,293 @@
-"""
-Sprint 4: FastAPI REST Service for Crowdedness-Aware Bus Journey Planner
-Transport Stack Hackathon 2026 — Phase 1 (Problem 2)
-Crowdedness-Aware Bus Journey Planner for Delhi (DTC/Cluster)
-"""
+"""API v1 for the crowding-aware bus journey planner.
 
-import os
-# Limit thread usage for BLAS libraries to avoid memory allocation errors in constrained environments
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
+Serves the planner and the crowding outputs. Reads the pipeline outputs in DATA_DIR (default data/processed).
+No ticket-level or vehicle-level data leaves this service: every response is an aggregate by route, stretch,
+corridor or scheduled trip.
+"""
+from __future__ import annotations
 
+import io
 import json
-import time
+import os
 from contextlib import asynccontextmanager
-from typing import Dict, List, Any, Optional
+from pathlib import Path
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, Query, HTTPException
+import pandas as pd
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field
-import numpy as np
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict, Field
+
+from src.pipeline.config import WINDOWS
+from src.pipeline.db import connect
+from src.pipeline.paths import Paths
+from src.routing.planner import PlaceNotFound, Planner
+
+FRONTEND = Paths.default().repo / "frontend"
+CREDIT = "Data: Transport Stack / IIIT Delhi; ticketing from ONDC e-ticketing."
+HHMM = r"^([01]?\d|2[0-3]):[0-5]\d$"
+Day = Literal["weekday", "weekend"]
+OPERATOR_COLUMNS = ["route_id", "short_name", "operator", "direction", "day_type", "depart", "depart_min",
+                    "crowded_rider_min_removed", "riders_moved_down", "max_load_section", "peak_load_factor",
+                    "evidence_share", "flags"]
 
 
-class McRaptorRouter:  # the legacy router is gone (Task 15); Task 16 rewrites this API on src.routing.planner
-    def __init__(self, *a, **k):
-        raise RuntimeError("legacy router removed; the API is being rewritten on src.routing.planner")
+class PlanQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    from_: str = Field(alias="from", min_length=1, max_length=120)
+    to: str = Field(min_length=1, max_length=120)
+    depart: str = Field(pattern=HHMM)
+    day: Day
 
-# ──────────────────────── Global Singletons & Cache ───────────────────────────
 
-_router_instance: Optional[McRaptorRouter] = None
-_metrics_cache: Optional[Dict[str, Any]] = None
-_rsn_to_ridx_cache: Optional[Dict[str, int]] = None
+class SearchQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    q: str = Field(min_length=1, max_length=120)
+    limit: int = Field(8, ge=1, le=20)
 
-def get_base_dir() -> str:
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-def get_router(base_dir: Optional[str] = None) -> McRaptorRouter:
-    global _router_instance
-    if _router_instance is None:
-        if base_dir is None:
-            base_dir = get_base_dir()
-        _router_instance = McRaptorRouter(base_dir=base_dir)
-    return _router_instance
+class CrowdingQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    route_id: int
+    day: Day
+    window: str = Field(pattern=HHMM)
 
-def get_metrics(base_dir: Optional[str] = None) -> Dict[str, Any]:
-    global _metrics_cache
-    if _metrics_cache is None:
-        if base_dir is None:
-            base_dir = get_base_dir()
-        proc_dir = os.path.join(base_dir, "data", "processed")
-        sprint1_rpt_path = os.path.join(proc_dir, "sprint1_resolution_report.json")
-        sprint2_rpt_path = os.path.join(proc_dir, "sprint2_validation_report.json")
 
-        sprint1_data = {}
-        if os.path.exists(sprint1_rpt_path):
-            with open(sprint1_rpt_path, "r", encoding="utf-8") as f:
-                sprint1_data = json.load(f)
+class StretchQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    from_: str = Field(alias="from", min_length=1, max_length=40)
+    to: str = Field(min_length=1, max_length=40)
+    day: Day
 
-        sprint2_data = {}
-        if os.path.exists(sprint2_rpt_path):
-            with open(sprint2_rpt_path, "r", encoding="utf-8") as f:
-                sprint2_data = json.load(f)
 
-        _metrics_cache = {
-            "sprint1": sprint1_data,
-            "sprint2": sprint2_data,
+class CorridorQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    day: Day
+    window: str = Field(pattern=HHMM)
+    limit: int = Field(500, ge=1, le=5000)
+
+
+class OperatorQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    day: Day
+    operator: str | None = Field(None, max_length=40)
+    limit: int = Field(100, ge=1, le=5000)
+
+
+def _hhmm(minute: int) -> str:
+    return f"{int(minute) // 60:02d}:{int(minute) % 60:02d}"
+
+
+def _window_start(window: str, day: str) -> int:
+    h, m = window.split(":")
+    step = WINDOWS[day].step_min
+    t = int(h) * 60 + int(m)
+    return t // step * step
+
+
+def _num(x, nd=2):
+    return None if pd.isna(x) else round(float(x), nd)
+
+
+class State:
+    """Everything loaded once at start-up."""
+
+    def __init__(self, paths: Paths):
+        self.paths = paths
+        self.processed = Path(paths.processed)
+        self.planner = Planner.load(paths)
+        self.version = self.planner.version
+        self.manifest = self._json(self.processed / "manifest.json")
+        self.validation = self._json(self.processed / "validation_report.json")
+        gj = self._json(self.processed / "corridor_geometry.geojson")
+        self.geometry = {f["id"]: f["geometry"] for f in gj.get("features", [])} if gj else {}
+
+    @staticmethod
+    def _json(p: Path):
+        try:
+            return json.loads(p.read_text())
+        except (OSError, ValueError):
+            return None
+
+    def file(self, name: str) -> Path:
+        p = self.processed / name
+        if not p.exists():
+            raise HTTPException(503, f"{name} is not available in this data build")
+        return p
+
+    def query(self, sql: str, params: list) -> pd.DataFrame:
+        con = connect()
+        try:
+            return con.execute(sql, params).df()
+        finally:
+            con.close()
+
+    def count(self, name: str) -> int | None:
+        p = self.processed / name
+        if not p.exists():
+            return None
+        return int(self.query(f"SELECT count(*) FROM read_parquet('{p}')", []).iloc[0, 0])
+
+    def health(self) -> dict:
+        head = (self.validation or {}).get("headline_numbers", {})
+        pl = self.planner
+        stages = (self.manifest or {}).get("stages", {})
+        return {
+            "status": "ok",
+            "data_version": self.version,
+            "stages_done": sorted(k for k, v in stages.items() if v.get("done")),
+            "counts": {
+                "routes": len(pl.route_ids),
+                "stops": int(len(pl.stop_lat)),
+                "places": len(pl.place_stops),
+                "stretch_rows": self.count("stretch_crowding.parquet"),
+                "corridor_pairs": len(self.geometry),
+                "operator_trips": self.count("operator_trips.parquet"),
+            },
+            "data": {
+                "ticket_days": head.get("clean_days"),
+                "tickets_resolved": head.get("tickets_resolved"),
+                "gps_available": head.get("gps_available"),
+            },
+            "credit": CREDIT,
         }
-    return _metrics_cache
 
-def get_rsn_to_ridx(base_dir: Optional[str] = None) -> Dict[str, int]:
-    global _rsn_to_ridx_cache
-    if _rsn_to_ridx_cache is None:
-        router = get_router(base_dir)
-        rsn_dict = {}
-        for r_idx in range(router.n_routes):
-            r_id = router.idx_to_route_id[r_idx]
-            meta = router.route_meta.get(r_id, {})
-            rsn = meta.get("route_short_name", "")
-            if rsn:
-                rsn_dict[rsn.upper()] = r_idx
-        _rsn_to_ridx_cache = rsn_dict
-    return _rsn_to_ridx_cache
 
-# Major transit hubs across Delhi for default empty search
-MAJOR_TRANSIT_HUBS = [
-    {"stop_id": "2560", "stop_name": "Nehru Place Terminal", "stop_lat": 28.5487, "stop_lon": 77.2570},
-    {"stop_id": "2944", "stop_name": "Dhaula Kuan (Ring Road)", "stop_lat": 28.5995, "stop_lon": 77.1625},
-    {"stop_id": "4822", "stop_name": "ISBT Kashmere Gate City Bus Terminal", "stop_lat": 28.6668, "stop_lon": 77.2294},
-    {"stop_id": "1037", "stop_name": "ITO AGCR /  ITO", "stop_lat": 28.6281, "stop_lon": 77.2450},
-    {"stop_id": "365",  "stop_name": "Shivaji Stadium Terminal (Connaught Place)", "stop_lat": 28.6323, "stop_lon": 77.2165},
-    {"stop_id": "7975", "stop_name": "Uttam Nagar Terminal (Out Gate)", "stop_lat": 28.6255, "stop_lon": 77.0663},
-    {"stop_id": "257",  "stop_name": "GTB Nagar", "stop_lat": 28.6982, "stop_lon": 77.2066},
-    {"stop_id": "7563", "stop_name": "Pitampura Metro Station Madhuban Chowk", "stop_lat": 28.7031, "stop_lon": 77.1326},
-    {"stop_id": "2672", "stop_name": "Badarpur Village", "stop_lat": 28.5021, "stop_lon": 77.3002},
-    {"stop_id": "2829", "stop_name": "AIIMS", "stop_lat": 28.5685, "stop_lon": 77.2078},
-]
+def _placeholder(title: str) -> str:
+    return (f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" "
+            f"content=\"width=device-width,initial-scale=1\"><title>{title}</title></head><body>"
+            f"<h1>{title}</h1><p>This page is not built yet. The data is served at "
+            f"<a href=\"/v1/health\">/v1/health</a>.</p><p>{CREDIT}</p></body></html>")
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("\n[FastAPI] Pre-warming McRAPTOR Router and Loading Model Validation Metrics...", flush=True)
-    t0 = time.time()
-    router = get_router()
-    app.state.router = router
-    app.state.metrics = get_metrics()
-    app.state.rsn_to_ridx = get_rsn_to_ridx()
-    print(f"[FastAPI] Lifespan pre-warm complete in {time.time()-t0:.2f}s. Server ready!", flush=True)
-    yield
-    print("[FastAPI] Shutting down service.", flush=True)
 
-# ────────────────────────── FastAPI App & Middlewares ─────────────────────────
+def _page(name: str, title: str) -> HTMLResponse:
+    f = FRONTEND / name
+    return HTMLResponse(f.read_text(encoding="utf-8") if f.is_file() else _placeholder(title))
 
-app = FastAPI(
-    title="Crowdedness-Aware Bus Journey Planner for Delhi (DTC/Cluster)",
-    description="Transport Stack Hackathon 2026 — Phase 1 (Problem 2) Backend API",
-    version="1.0.0",
-    lifespan=lifespan
-)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def create_app(paths: Paths | None = None) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        app.state.s = State(paths or Paths.from_env())
+        yield
 
-# ───────────────────────────── Pydantic Schemas ───────────────────────────────
+    app = FastAPI(title="Delhi bus crowding planner", version="1", lifespan=lifespan)
+    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"],
+                       allow_credentials=False)
 
-class PlanRequest(BaseModel):
-    origin_stop_id: str = Field(..., description="GTFS stop_id of the origin stop")
-    dest_stop_id: str = Field(..., description="GTFS stop_id of the destination stop")
-    departure_time: str = Field(default="09:00", description="Departure time in HH:MM format (default: 09:00)")
-    day_type: str = Field(default="weekday", description="'weekday', 'saturday', or 'sunday'")
-    beta: float = Field(default=0.6, ge=0.0, le=5.0, description="Discomfort penalty weight (0.0 = Fastest, 0.6 = Balanced, 1.8 = Least Crowded)")
+    def S(request: Request) -> State:
+        return request.app.state.s
 
-class HealthResponse(BaseModel):
-    status: str
-    stops_indexed: int
-    routes_loaded: int
-    transfer_edges: int
-    ready: bool
+    @app.exception_handler(PlaceNotFound)
+    async def _place_missing(request: Request, exc: PlaceNotFound):
+        return JSONResponse({"detail": exc.message, "suggestions": exc.suggestions}, status_code=404)
 
-# ──────────────────────────────── API Endpoints ───────────────────────────────
+    @app.get("/v1/health")
+    def health(request: Request):
+        return S(request).health()
 
-@app.get("/", include_in_schema=False)
-def get_frontend():
-    """Serves the interactive web UI frontend."""
-    base_dir = get_base_dir()
-    index_path = os.path.join(base_dir, "frontend", "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path, media_type="text/html")
-    return JSONResponse({"status": "Frontend index.html under development", "api_docs": "/docs"})
+    @app.get("/v1/plan")
+    def plan(request: Request, q: Annotated[PlanQuery, Query()]):
+        try:
+            return S(request).planner.plan(q.from_, q.to, q.depart, q.day)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
 
-@app.get("/api/health", response_model=HealthResponse)
-def get_health():
-    """Returns engine health status and dataset indexing summary."""
-    router = getattr(app.state, "router", None) or get_router()
-    return {
-        "status": "healthy",
-        "stops_indexed": router.n_stops,
-        "routes_loaded": router.n_routes,
-        "transfer_edges": sum(len(e) for e in router.footpaths_idx),
-        "ready": True
-    }
+    @app.get("/v1/places/search")
+    def places_search(request: Request, q: Annotated[SearchQuery, Query()]):
+        s = S(request)
+        return {"data_version": s.version, "query": q.q, "places": s.planner.search_places(q.q, q.limit)}
 
-@app.get("/api/stops/search")
-def search_stops(
-    q: str = Query(default="", description="Search query for stop name or stop_id"),
-    limit: int = Query(default=12, ge=1, le=50, description="Max results to return")
-):
-    """
-    Fast prefix, substring, and token search across all 6,862 GTFS stops.
-    If query is empty, returns curated list of 10 major transit hubs.
-    """
-    router = getattr(app.state, "router", None) or get_router()
-    clean_q = q.strip().lower()
+    @app.get("/v1/crowding")
+    def crowding(request: Request, q: Annotated[CrowdingQuery, Query()]):
+        s = S(request)
+        w = _window_start(q.window, q.day)
+        df = s.query(f"""SELECT * FROM read_parquet('{s.file("stretch_crowding.parquet")}')
+                         WHERE route_id = ? AND day_type = ? AND window_start_min = ? ORDER BY seq""",
+                     [q.route_id, q.day, w])
+        if df.empty:
+            raise HTTPException(404, f"No crowding data for route {q.route_id} on a {q.day} at {_hhmm(w)}")
+        return {"data_version": s.version, "route_id": q.route_id, "route": df.short_name.iloc[0],
+                "operator": df.operator.iloc[0], "day": q.day, "window": {"start": _hhmm(w)},
+                "stretches": [_stretch(r) for r in df.itertuples()]}
 
-    if not clean_q:
-        return {"query": "", "count": len(MAJOR_TRANSIT_HUBS), "stops": MAJOR_TRANSIT_HUBS[:limit]}
+    @app.get("/v1/crowding/stretch")
+    def crowding_stretch(request: Request, q: Annotated[StretchQuery, Query()]):
+        s = S(request)
+        df = s.query(f"""SELECT * FROM read_parquet('{s.file("stretch_crowding.parquet")}')
+                         WHERE from_stop_id = ? AND to_stop_id = ? AND day_type = ?
+                         ORDER BY window_start_min, route_id""", [q.from_, q.to, q.day])
+        if df.empty:
+            raise HTTPException(404, f"No crowding data between stops {q.from_} and {q.to} on a {q.day}")
+        windows = [{"start": _hhmm(w), "routes": [dict(route_id=int(r.route_id), route=r.short_name, **_stretch(r))
+                                                 for r in g.itertuples()]}
+                   for w, g in df.groupby("window_start_min")]
+        return {"data_version": s.version, "from": {"stop_id": q.from_, "name": df.from_name.iloc[0]},
+                "to": {"stop_id": q.to, "name": df.to_name.iloc[0]}, "day": q.day, "windows": windows}
 
-    results = []
-    for sid, info in router.stop_info.items():
-        name_lower = info["stop_name"].lower()
-        score = 0
-        if name_lower.startswith(clean_q) or sid.startswith(clean_q):
-            score = 100
-        elif f" {clean_q}" in name_lower or f"/{clean_q}" in name_lower or f"({clean_q}" in name_lower:
-            score = 80
-        elif clean_q in name_lower:
-            score = 60
+    @app.get("/v1/corridors")
+    def corridors(request: Request, q: Annotated[CorridorQuery, Query()]):
+        s = S(request)
+        w = _window_start(q.window, q.day)
+        df = s.query(f"""SELECT * FROM read_parquet('{s.file("corridor_values.parquet")}')
+                         WHERE day_type = ? AND window_start_min = ?
+                         ORDER BY crowded_rider_min DESC, pair_id LIMIT {int(q.limit)}""", [q.day, w])
+        feats = [{"type": "Feature", "id": r.pair_id, "geometry": s.geometry.get(r.pair_id),
+                  "properties": {"from_stop_id": r.from_stop_id, "to_stop_id": r.to_stop_id,
+                                 "load_ratio": _num(r.load_ratio), "share_crowded": _num(r.share_crowded, 3),
+                                 "crowded_rider_min": _num(r.crowded_rider_min, 1), "buses": _num(r.buses),
+                                 "routes": int(r.routes)}} for r in df.itertuples()]
+        return {"type": "FeatureCollection", "data_version": s.version, "day": q.day,
+                "window": {"start": _hhmm(w)}, "features": feats}
 
-        if score > 0:
-            results.append({
-                "score": score,
-                "stop_id": sid,
-                "stop_name": info["stop_name"],
-                "stop_lat": info["lat"],
-                "stop_lon": info["lon"]
-            })
+    def operator_frame(s: State, q: OperatorQuery) -> pd.DataFrame:
+        sql = f"""SELECT * FROM read_parquet('{s.file("operator_trips.parquet")}') WHERE day_type = ?"""
+        args: list = [q.day]
+        if q.operator:
+            sql += " AND upper(operator) = upper(?)"
+            args.append(q.operator)
+        # weekday and weekend are ranked separately (ruling R23): the day filter is mandatory
+        sql += f" ORDER BY crowded_rider_min_removed DESC, route_id, depart_min LIMIT {int(q.limit)}"
+        df = s.query(sql, args)
+        df["depart"] = df.depart_min.map(_hhmm)
+        return df[OPERATOR_COLUMNS]
 
-    results.sort(key=lambda x: (-x["score"], len(x["stop_name"])))
-    truncated = results[:limit]
+    @app.get("/v1/operator/trips")
+    def operator_trips(request: Request, q: Annotated[OperatorQuery, Query()]):
+        s = S(request)
+        df = operator_frame(s, q)
+        rows = json.loads(df.to_json(orient="records"))
+        return {"data_version": s.version, "day": q.day, "operator": q.operator, "count": len(rows), "trips": rows}
 
-    return {
-        "query": q,
-        "count": len(truncated),
-        "stops": [{k: v for k, v in r.items() if k != "score"} for r in truncated]
-    }
+    @app.get("/v1/operator/trips.csv")
+    def operator_trips_csv(request: Request, q: Annotated[OperatorQuery, Query()]):
+        buf = io.StringIO()
+        operator_frame(S(request), q).to_csv(buf, index=False)
+        return Response(buf.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="operator_trips_{q.day}.csv"',
+                                 "X-Data-Version": S(request).version})
 
-@app.post("/api/plan")
-def plan_journey_endpoint(req: PlanRequest):
-    """
-    Computes multi-criteria Pareto-optimal itineraries between origin and destination:
-    - Incorporates empirical headway wait time and left-behind risk (>80% crush load).
-    - Returns ranked Pareto itineraries with latency in ms.
-    - Evaluates smart +/-15 minute departure shifts and attaches `departure_nudge` if crowding is reduced by >= 15%.
-    """
-    router = getattr(app.state, "router", None) or get_router()
-    t_start = time.time()
+    @app.get("/", response_class=HTMLResponse)
+    def index():
+        return _page("index.html", "Delhi bus crowding planner")
 
-    dep_time = req.departure_time.strip()
-    if len(dep_time.split(":")) == 2:
-        dep_time = f"{dep_time}:00"
+    @app.get("/operator", response_class=HTMLResponse)
+    def operator_page():
+        return _page("operator.html", "Operator view")
 
-    res = router.plan_journey(
-        origin_stop=req.origin_stop_id,
-        dest_stop=req.dest_stop_id,
-        departure_time_str=dep_time,
-        day_type=req.day_type,
-        beta=req.beta
-    )
+    if FRONTEND.is_dir():
+        app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+    return app
 
-    elapsed_ms = round((time.time() - t_start) * 1000.0, 1)
-    res["query_latency_ms"] = elapsed_ms
 
-    if "error" in res:
-        raise HTTPException(status_code=404, detail=res["error"])
+def _stretch(r) -> dict:
+    return {"seq": int(r.seq), "from_stop_id": r.from_stop_id, "to_stop_id": r.to_stop_id,
+            "from_name": r.from_name, "to_name": r.to_name, "level": r.level, "evidence": r.evidence,
+            "people": [_num(r.people_low, 0), _num(r.people_mid, 0), _num(r.people_high, 0)],
+            "seats": _num(r.seats, 0), "rated_total": _num(r.rated_total, 0), "crush": _num(r.crush, 0),
+            "flags": [f for f in (r.flags if isinstance(r.flags, str) else "").split(",") if f]}
 
-    return res
 
-@app.get("/api/validation/metrics")
-def get_validation_metrics():
-    """
-    Returns pipeline validation metrics and charts data from Sprint 1 and Sprint 2:
-    - Diurnal weekday peak/lull crowding table
-    - Directional asymmetry metrics (717A, 729, 511A, 578)
-    - KPI cards data (passengers modeled, stop resolution rate, etc.)
-    """
-    metrics = getattr(app.state, "metrics", None) or get_metrics()
-    sprint1 = metrics.get("sprint1", {})
-    sprint2 = metrics.get("sprint2", {})
-
-    sprint2_val = sprint2.get("validation", {})
-    diurnal = sprint2_val.get("diurnal_windows", {})
-    asym = sprint2_val.get("directional_asymmetry", {})
-    tiers = sprint2_val.get("overall_tier_distribution", {})
-
-    return {
-        "kpis": {
-            "total_passengers_modeled": "2,574,781",
-            "stop_resolution_match_rate": "93.13%",
-            "total_segment_slots": "1,209,599",
-            "active_bus_fleet": "6,810",
-            "mean_query_latency_ms": "~170 ms (Single) / 517 ms (3 Profiles)"
-        },
-        "diurnal_windows": diurnal,
-        "directional_asymmetry": asym,
-        "tier_distribution": tiers,
-        "sprint1_summary": sprint1.get("summary", {}),
-        "sprint2_parameters": sprint2.get("model_parameters", {})
-    }
-
-@app.get("/api/routes/{route_short_name}/profile")
-def get_route_profile(
-    route_short_name: str,
-    day_type: str = Query(default="weekday", description="weekday, saturday, or sunday"),
-    time_slot: int = Query(default=18, ge=0, le=47, description="Time slot 0..47 (18 = 09:00-09:30)")
-):
-    """
-    Returns stop-by-stop sequence, coordinates, and crowding scores along a specific route.
-    """
-    router = getattr(app.state, "router", None) or get_router()
-    clean_rsn = route_short_name.strip().upper()
-    rsn_to_ridx = getattr(app.state, "rsn_to_ridx", None) or get_rsn_to_ridx()
-
-    r_idx = rsn_to_ridx.get(clean_rsn)
-    if r_idx is None:
-        raise HTTPException(status_code=404, detail=f"Route '{route_short_name}' not found in canonical feed.")
-
-    r_id = router.idx_to_route_id[r_idx]
-    r_meta = router.route_meta.get(r_id, {})
-    is_ac = bool(router.route_is_ac[r_idx])
-
-    day_norm = day_type.strip().lower()
-    day_code = 1 if "sat" in day_norm else (2 if "sun" in day_norm else 0)
-
-    stops = router.route_stops_arr[r_idx]
-    durs = router.route_segs_dur[r_idx]
-    cs_mat = router.route_segs_cs[r_idx]
-
-    stop_list = []
-    seg_list = []
-
-    for idx, (s_idx, seq, _) in enumerate(stops):
-        sid = router.idx_to_stop_id[s_idx]
-        info = router.stop_info[sid]
-        stop_list.append({
-            "stop_sequence": seq,
-            "stop_id": sid,
-            "stop_name": info["stop_name"],
-            "lat": info["lat"],
-            "lon": info["lon"]
-        })
-
-        if idx < len(stops) - 1:
-            next_sid = router.idx_to_stop_id[stops[idx + 1][0]]
-            next_info = router.stop_info[next_sid]
-            seg_dur = int(durs[idx])
-            cs = float(cs_mat[idx, day_code, time_slot])
-
-            seg_list.append({
-                "from_sequence": seq,
-                "from_stop_name": info["stop_name"],
-                "from_lat": info["lat"],
-                "from_lon": info["lon"],
-                "to_sequence": stops[idx + 1][1],
-                "to_stop_name": next_info["stop_name"],
-                "to_lat": next_info["lat"],
-                "to_lon": next_info["lon"],
-                "scheduled_duration_sec": seg_dur,
-                "crowding_score": round(cs, 3),
-                "crowding_tier": "Low" if cs < 0.35 else ("Moderate" if cs <= 0.70 else "High")
-            })
-
-    avg_cs = float(np.mean([s["crowding_score"] for s in seg_list])) if seg_list else 0.15
-    max_cs = float(np.max([s["crowding_score"] for s in seg_list])) if seg_list else 0.15
-
-    return {
-        "route_id": r_id,
-        "route_short_name": r_meta.get("route_short_name", clean_rsn),
-        "route_long_name": r_meta.get("route_long_name", clean_rsn),
-        "is_ac": is_ac,
-        "day_type": day_type,
-        "time_slot": time_slot,
-        "total_stops": len(stop_list),
-        "avg_crowding_score": round(avg_cs, 3),
-        "max_crowding_score": round(max_cs, 3),
-        "stops": stop_list,
-        "segments": seg_list
-    }
+app = create_app()
