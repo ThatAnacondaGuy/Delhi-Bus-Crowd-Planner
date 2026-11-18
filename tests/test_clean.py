@@ -67,3 +67,11 @@ def test_ist_date_and_sample(con, tmp_path):
             {"route": "B", "created_at": "2026-10-05 23:30:00+05:30"}]
     clean.run(con, paths_for(make_tickets(tmp_path, rows), tmp_path), ["A"])
     assert con.execute("SELECT route_raw, date FROM tickets_clean").fetchall() == [("A", date(2026, 10, 5))]
+
+
+def test_ist_date_not_session_dependent(con, tmp_path):
+    # Sat 3 Oct 00:30 IST is Fri 2 Oct 19:00 UTC; a UTC session must still give the IST date.
+    con.execute("SET TimeZone='UTC'")
+    rows = [{"created_at": "2026-10-03 00:30:00+05:30"}]
+    clean.run(con, paths_for(make_tickets(tmp_path, rows), tmp_path), None)
+    assert con.execute("SELECT date, day_type FROM tickets_clean").fetchall() == [(date(2026, 10, 3), "weekend")]

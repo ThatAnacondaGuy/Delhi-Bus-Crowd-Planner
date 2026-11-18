@@ -64,7 +64,11 @@ def main(argv=None, paths: Paths | None = None) -> int:
                 print(f"stage {name}: up to date, skipped")
             else:
                 accepted = inspect.signature(fn).parameters
-                result = fn(con, paths, **{k: v for k, v in opts.items() if k in accepted})
+                if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in accepted.values()):
+                    kwargs = dict(opts)
+                else:
+                    kwargs = {k: v for k, v in opts.items() if k in accepted}
+                result = fn(con, paths, **kwargs)
                 print(f"stage {name}: done {result if result is not None else ''}".rstrip())
                 manifest.mark_done(name, inputs, [str(paths.work_db)], params, path=mpath)
             if name == args.until:

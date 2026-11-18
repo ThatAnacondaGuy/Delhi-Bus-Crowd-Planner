@@ -48,8 +48,8 @@ def run(con, paths, sample_routes: list[str] | None = None) -> CleanStats:
                           ELSE trim(vehicle_number) END AS vehicle FROM raw)
         SELECT ticket_id::BIGINT AS ticket_id, route AS route_raw, start_stop_name AS start_raw,
                end_stop_name AS end_raw, passenger_count::INTEGER AS pax, amount::DOUBLE AS amount,
-               vehicle, is_ac, created_at AS ts, CAST(created_at AS DATE) AS date,
-               CASE WHEN isodow(CAST(created_at AS DATE)) >= 6 THEN 'weekend' ELSE 'weekday' END AS day_type,
+               vehicle, is_ac, created_at AS ts, CAST(timezone('Asia/Kolkata', created_at) AS DATE) AS date,
+               CASE WHEN isodow(CAST(timezone('Asia/Kolkata', created_at) AS DATE)) >= 6 THEN 'weekend' ELSE 'weekday' END AS day_type,
                CASE WHEN vehicle IS NULL THEN 'null' ELSE 'linked' END AS channel
         FROM v""", params)
     con.execute("DROP TABLE IF EXISTS clean_days")
