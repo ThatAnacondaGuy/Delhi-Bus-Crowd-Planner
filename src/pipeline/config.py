@@ -146,7 +146,7 @@ ALIGHTING_LAST_STRETCHES = 2   # an alighting-sensitive route's last stretches a
 CORRIDOR_SIMPLIFY_M = 3.0      # Douglas-Peucker tolerance for corridor_geometry.geojson
 SUPPLY_WIDEN_MIN = 30          # S = 0 fallback: widen the base by this many minutes each side
 PLANNER_TABLES = ("canonical_stops", "segment_shapes", "places", "hub_alias", "passings", "service_hours",
-                  "service_class", "runtime_factors", "bus_mix", "route_specs")
+                  "service_class", "runtime_factors", "bus_mix", "route_specs", "gps_rho_fill")  # last: route x hour x day type only
 E_SCALE_CEILING_MULT = 3.0     # R21 modelling assumption: E*_op <= 3 x E_op (Task 12 varies it); the total may then fall short
 PEAK_WINDOWS_MIN = [(420, 660), (1020, 1260)]  # R22: weekday peak window labels, 07:00-11:00 and 17:00-21:00
 

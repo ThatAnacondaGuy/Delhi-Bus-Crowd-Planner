@@ -21,7 +21,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 import numpy as np
 
-from src.routing.mcraptor import McRaptorRouter
+
+class McRaptorRouter:  # the legacy router is gone (Task 15); Task 16 rewrites this API on src.routing.planner
+    def __init__(self, *a, **k):
+        raise RuntimeError("legacy router removed; the API is being rewritten on src.routing.planner")
 
 # ──────────────────────── Global Singletons & Cache ───────────────────────────
 
