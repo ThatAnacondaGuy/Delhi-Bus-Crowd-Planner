@@ -36,6 +36,7 @@ def toy(tmp_path_factory):
     sc["direction"] = "UP"
     sc["level"], sc["evidence"] = "standing", "rough"
     sc["seats"], sc["rated_total"], sc["crush"] = 35.0, 63.0, 100.0
+    sc["buses"], sc["bus_source"] = 4.0, "gps"
     sc.to_parquet(out / "stretch_crowding.parquet", index=False)
     pid = f"{sc.from_stop_id.iloc[0]}-{sc.to_stop_id.iloc[0]}"
     pd.DataFrame([dict(pair_id=pid, from_stop_id="1", to_stop_id="2", day_type="weekday", window_start_min=480,
@@ -116,7 +117,7 @@ def test_crowding_route_and_window_floor(client):
     assert r["window"]["start"] == "08:00" and r["stretches"][0]["level"] == "standing"
     assert r["stretches"][0]["people"] == [40, 45, 50]
     assert client.get("/v1/crowding", params={"route_id": 999, "day": "weekday", "window": "08:00"}).status_code == 404
-    assert client.get("/v1/crowding", params={"route_id": 101, "day": "weekday"}).status_code == 422
+    assert client.get("/v1/crowding", params={"route_id": 101, "day": "weekday", "window": "25:00"}).status_code == 422
 
 
 def test_crowding_stretch(client):
@@ -202,3 +203,22 @@ def test_no_forbidden_words_in_responses(client):
               "/v1/places/search?q=alpha", "/openapi.json"):
         assert not FORBIDDEN.search(client.get(u).text), u
     assert not FORBIDDEN.search(Path("src/api/main.py").read_text())
+
+
+def test_crowding_without_window_returns_all_windows(client):
+    r = client.get("/v1/crowding", params={"route_id": 101, "day": "weekday"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "window" not in body and body["windows"]
+    starts = [w["start"] for w in body["windows"]]
+    assert starts == sorted(starts) and len(set(starts)) == len(starts)
+    assert "08:00" in starts and all(w["stretches"] for w in body["windows"])
+    one = client.get("/v1/crowding", params={"route_id": 101, "day": "weekday", "window": "08:10"}).json()
+    at8 = next(w for w in body["windows"] if w["start"] == "08:00")
+    assert at8["stretches"] == one["stretches"]                      # same stretch rows as the single-window call
+    assert client.get("/v1/crowding", params={"route_id": 999, "day": "weekday"}).status_code == 404
+
+
+def test_stretch_rows_carry_buses_and_their_source(client):
+    s = client.get("/v1/crowding", params={"route_id": 101, "day": "weekday", "window": "08:00"}).json()["stretches"][0]
+    assert s["buses"] == 4.0 and s["bus_source"] == "gps"

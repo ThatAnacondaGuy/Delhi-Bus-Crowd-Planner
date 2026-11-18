@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Operator view: the extra bus trips that would remove the most crowding in Delhi, a corridor map and a route heat strip.">
+  <title>Delhi bus crowding: operator view</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/operator.css">
+</head>
+<body class="op">
+  <header class="top">
+    <h1 class="brand">Delhi bus crowding: operator view</h1>
+    <nav class="op-nav" aria-label="Pages">
+      <a class="op-link" href="/">Commuter planner</a>
+    </nav>
+  </header>
+
+  <main id="main" class="op-main">
+    <section class="op-bar" aria-label="Choose the day">
+      <div class="seg" role="group" aria-label="Day">
+        <button type="button" class="seg-btn" data-day="weekday" aria-pressed="true">Weekday</button>
+        <button type="button" class="seg-btn" data-day="weekend" aria-pressed="false">Weekend</button>
+      </div>
+      <p class="op-note">Weekdays and weekends are ranked separately and never mixed. Counts are scaled up from app tickets, and women riding free and pass holders are not in this data, so buses can be fuller than shown.</p>
+    </section>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <div id="problem" class="problem" role="alert" hidden></div>
+
+    <div class="op-grid">
+      <section class="op-card op-trips" aria-labelledby="trips-title">
+        <div class="op-card-head">
+          <h2 id="trips-title">Extra trips that help most</h2>
+          <a id="csv" class="op-csv" href="/v1/operator/trips.csv?day=weekday" download>Download CSV</a>
+        </div>
+        <p class="op-sub" id="trips-sub">One extra bus on each of these departures would take the most people out of crowded buses. Top 20 per operator.</p>
+        <div class="seg" role="group" aria-label="Operator" id="op-switch">
+          <button type="button" class="seg-btn" data-operator="DTC" aria-pressed="true">DTC</button>
+          <button type="button" class="seg-btn" data-operator="DIMTS" aria-pressed="false">Cluster (DIMTS)</button>
+        </div>
+        <div class="op-scroll op-trips-scroll" tabindex="0" role="region" aria-label="Ranked extra trips">
+          <table class="op-table" id="trips-table">
+            <caption class="sr-only" id="trips-caption">Extra trips that help most</caption>
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">Route</th>
+                <th scope="col">Direction</th>
+                <th scope="col">Departs</th>
+                <th scope="col" class="num">Crowded rider-minutes removed</th>
+                <th scope="col" class="num">Riders moved down a level</th>
+                <th scope="col">Maximum load section</th>
+                <th scope="col" class="num">Peak load factor</th>
+                <th scope="col" class="num">Evidence share</th>
+                <th scope="col">Notes</th>
+              </tr>
+            </thead>
+            <tbody id="trips-body"></tbody>
+          </table>
+        </div>
+        <details class="op-help">
+          <summary>How to read this table</summary>
+          <ul>
+            <li><b>Crowded rider-minutes removed</b>: minutes that riders spend in a crowded bus, which one extra bus on that departure would take away.</li>
+            <li><b>Riders moved down a level</b>: riders who would go from crowded to standing, or from standing to seats.</li>
+            <li>The maximum load section is the stretch of the trip with the most people on board. The load factor is the people on board divided by what the bus is rated to carry (seats plus standing places), so 1.00 is a full bus and above 1.00 is crowded.</li>
+            <li><b>Evidence share</b>: the share of the trip's stretches that rest on many app tickets rather than a rough guess.</li>
+            <li>Buses that ran come from GPS where coverage is 0.8 or more. Elsewhere they are estimates from the timetable. Pick a route to see the bus count behind every cell.</li>
+          </ul>
+        </details>
+      </section>
+
+      <section class="op-card op-mapcard" aria-labelledby="map-title">
+        <div class="op-card-head">
+          <h2 id="map-title">Corridor map</h2>
+        </div>
+        <div class="op-map-controls">
+          <div class="seg" role="group" aria-label="Colour the map by">
+            <button type="button" class="seg-btn" data-basis="load_ratio" aria-pressed="true">People per rated capacity</button>
+            <button type="button" class="seg-btn" data-basis="share_crowded" aria-pressed="false">Buses crowded</button>
+          </div>
+        </div>
+        <div class="op-slider">
+          <label for="slider"><span id="slider-label" class="op-time">09:00</span> <span class="op-muted" id="slider-note"></span></label>
+          <input id="slider" type="range" min="0" max="47" step="1" value="18" aria-describedby="slider-note">
+        </div>
+        <div class="legend op-legend" id="map-legend" aria-label="Map colours"></div>
+        <div id="map" class="op-map" role="region" aria-label="Map of corridor crowding"></div>
+        <p class="op-sub" id="map-sub"></p>
+      </section>
+    </div>
+
+    <section class="op-card op-strip" aria-labelledby="strip-title">
+      <div class="op-card-head">
+        <h2 id="strip-title">Route heat strip</h2>
+      </div>
+      <p class="op-sub" id="strip-sub">Pick a route in the table to see every stretch of it across the day.</p>
+      <div class="legend op-legend" id="strip-legend" aria-label="Heat strip levels"></div>
+      <div class="op-scroll op-strip-scroll" id="strip-scroll" role="region" aria-label="Heat strip: stretches by time of day" tabindex="0">
+        <table class="op-heat" id="heat"></table>
+      </div>
+      <div id="cell-detail" class="op-detail" role="status" aria-live="polite">Select a cell to see its detail.</div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Data: Transport Stack / IIIT Delhi; ticketing from ONDC e-ticketing.</p>
+    <p id="version" class="version"></p>
+  </footer>
+
+  <script src="/static/operator.js" defer></script>
+</body>
+</html>

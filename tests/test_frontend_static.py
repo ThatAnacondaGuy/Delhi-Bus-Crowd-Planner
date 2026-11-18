@@ -115,3 +115,78 @@ def test_card_renders_no_data():
     assert re.search(r"\.lvl-no_data[^{]*\{[^}]*(grey|gray|#[0-9a-f]{3,6})[^}]*dashed|\.lvl-no_data[^{]*\{[^}]*dashed", css)
     assert re.search(r"headline\s*(===|==)\s*null|!\s*\w+\.headline|headline\s*\?", js)
     assert "walk" in js and "evidence" in js
+
+
+# ---------------------------------------------------------------- operator view (Task 18)
+
+OP_FILES = {n: (FRONT / n) for n in ("operator.html", "operator.js")}
+
+
+def optext(name: str) -> str:
+    return OP_FILES[name].read_text(encoding="utf-8")
+
+
+def op_everything() -> str:
+    return "\n".join(optext(n) for n in OP_FILES) + "\n" + text("app.css") + "\n" + (FRONT / "operator.css").read_text(encoding="utf-8")
+
+
+def test_operator_files_exist():
+    assert all(p.is_file() for p in OP_FILES.values())
+
+
+def test_operator_standard_terms_and_title():
+    html = optext("operator.html")
+    for s in ("Extra trips that help most", "maximum load section", "load factor"):
+        assert s in html, s
+    assert "Cluster (DIMTS)" in optext("operator.js") + html
+
+
+def test_operator_links_csv_and_apis():
+    allt = optext("operator.html") + optext("operator.js")
+    assert "/v1/operator/trips.csv" in allt
+    for api in ("/v1/operator/trips", "/v1/corridors", "/v1/crowding"):
+        assert api in optext("operator.js"), api
+
+
+def test_operator_no_forbidden_words_no_tailwind_leaflet_pinned():
+    for n in OP_FILES:
+        assert not FORBIDDEN.search(optext(n)), n
+    allt = op_everything()
+    assert "cdn.tailwindcss.com" not in allt
+    assert not re.search(r"chart\.?js", allt, re.I)
+    assert "leaflet@1.9.4/dist/leaflet.js" in allt and "leaflet@1.9.4/dist/leaflet.css" in allt
+    assert not re.search(r"leaflet@(?!1\.9\.4)", allt)
+    assert "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" in allt     # same SRI as the commuter map
+    assert "tile.openstreetmap.org" in allt and "OpenStreetMap" in allt
+
+
+def test_operator_css_has_no_forbidden_words():
+    css = (FRONT / "operator.css").read_text(encoding="utf-8")
+    assert not FORBIDDEN.search(css)
+    assert "/static/operator.css" in optext("operator.html") and "/static/app.css" in optext("operator.html")
+
+
+def test_operator_credit_line_and_viewport():
+    html = optext("operator.html")
+    assert CREDIT in html and 'name="viewport"' in html
+
+
+def test_operator_api_strings_never_go_through_innerhtml():
+    js = optext("operator.js")
+    assert "innerHTML" not in js and "insertAdjacentHTML" not in js and "document.write" not in js
+
+
+def test_operator_day_switch_defaults_weekday_and_slider_steps():
+    html, js = optext("operator.html"), optext("operator.js")
+    assert re.search(r'data-day="weekday"[^>]*aria-pressed="true"', html)
+    assert re.search(r'data-day="weekend"[^>]*aria-pressed="false"', html)
+    assert 'type="range"' in html                                   # the corridor time slider
+    assert re.search(r"weekday\s*:\s*30", js) and re.search(r"weekend\s*:\s*60", js)   # 30-min and 60-min steps
+
+
+def test_operator_legends_pair_words_with_colour():
+    js, html = optext("operator.js"), optext("operator.html")
+    for word in ("Seats", "Standing", "Crowded", "No data"):
+        assert word in js, word
+    assert "aria-label" in js                                        # heat-strip cells carry a text label
+    assert "buses that ran" in (js + html).lower() and "estimate" in js.lower()

@@ -52,7 +52,7 @@ class CrowdingQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     route_id: int
     day: Day
-    window: str = Field(pattern=HHMM)
+    window: str | None = Field(None, pattern=HHMM)      # omitted: every window of the day (the heat strip)
 
 
 class StretchQuery(BaseModel):
@@ -216,15 +216,23 @@ def create_app(paths: Paths | None = None) -> FastAPI:
     @app.get("/v1/crowding")
     def crowding(request: Request, q: Annotated[CrowdingQuery, Query()]):
         s = S(request)
-        w = _window_start(q.window, q.day)
-        df = s.query(f"""SELECT * FROM read_parquet('{s.file("stretch_crowding.parquet")}')
-                         WHERE route_id = ? AND day_type = ? AND window_start_min = ? ORDER BY seq""",
-                     [q.route_id, q.day, w])
+        w = None if q.window is None else _window_start(q.window, q.day)
+        sql = f"""SELECT * FROM read_parquet('{s.file("stretch_crowding.parquet")}')
+                  WHERE route_id = ? AND day_type = ?"""
+        args: list = [q.route_id, q.day]
+        if w is not None:
+            sql += " AND window_start_min = ?"
+            args.append(w)
+        df = s.query(sql + " ORDER BY window_start_min, seq", args)
         if df.empty:
-            raise HTTPException(404, f"No crowding data for route {q.route_id} on a {q.day} at {_hhmm(w)}")
-        return {"data_version": s.version, "route_id": q.route_id, "route": df.short_name.iloc[0],
-                "operator": df.operator.iloc[0], "day": q.day, "window": {"start": _hhmm(w)},
-                "stretches": [_stretch(r) for r in df.itertuples()]}
+            at = f" at {_hhmm(w)}" if w is not None else ""
+            raise HTTPException(404, f"No crowding data for route {q.route_id} on a {q.day}{at}")
+        head = {"data_version": s.version, "route_id": q.route_id, "route": df.short_name.iloc[0],
+                "operator": df.operator.iloc[0], "day": q.day}
+        if w is not None:
+            return {**head, "window": {"start": _hhmm(w)}, "stretches": [_stretch(r) for r in df.itertuples()]}
+        return {**head, "windows": [{"start": _hhmm(ws), "stretches": [_stretch(r) for r in g.itertuples()]}
+                                    for ws, g in df.groupby("window_start_min")]}
 
     @app.get("/v1/crowding/stretch")
     def crowding_stretch(request: Request, q: Annotated[StretchQuery, Query()]):
@@ -299,6 +307,7 @@ def _stretch(r) -> dict:
     return {"seq": int(r.seq), "from_stop_id": r.from_stop_id, "to_stop_id": r.to_stop_id,
             "from_name": r.from_name, "to_name": r.to_name, "level": r.level, "evidence": r.evidence,
             "people": [_num(r.people_low, 0), _num(r.people_mid, 0), _num(r.people_high, 0)],
+            "buses": _num(getattr(r, "buses", float("nan")), 1), "bus_source": getattr(r, "bus_source", None),
             "seats": _num(r.seats, 0), "rated_total": _num(r.rated_total, 0), "crush": _num(r.crush, 0),
             "flags": [f for f in (r.flags if isinstance(r.flags, str) else "").split(",") if f]}
 
