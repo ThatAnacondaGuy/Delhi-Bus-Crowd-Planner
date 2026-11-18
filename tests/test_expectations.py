@@ -19,9 +19,9 @@ def test_schema():
     assert e.corridors[0].peak == ["am"]
     assert e.corridors[1].peak == ["pm"]
     assert e.corridors[1].direction == "eastbound"
-    assert e.dtc_bus_km == (400_800, 601_200)
-    assert e.load_factor_band == (0.78, 0.89)
-    assert e.gps_stoptime_rho_min == 0.3
+    assert e.dtc_bus_km == pytest.approx((400_800, 601_200))
+    assert e.load_factor_band == pytest.approx((0.78, 0.89))
+    assert e.gps_stoptime_rho_min == pytest.approx(0.3)
     assert e.peaks == {"am": [8, 10], "pm": [17, 20]}
     assert all(c.sources for c in e.corridors)
 
@@ -29,10 +29,10 @@ def test_schema():
 def test_matches_config():
     from src.pipeline import config
     e = load_expectations(YAML)
-    assert e.dtc_bus_km == (config.PUBLISHED_DTC_BUS_KM.value * 0.8,
-                            config.PUBLISHED_DTC_BUS_KM.value * 1.2)
-    assert e.load_factor_band == config.PUBLISHED_LOAD_FACTOR_BAND
-    assert e.gps_stoptime_rho_min == config.GPS_STOPTIME_RHO_MIN
+    assert e.dtc_bus_km == pytest.approx((config.PUBLISHED_DTC_BUS_KM.value * 0.8,
+                                          config.PUBLISHED_DTC_BUS_KM.value * 1.2))
+    assert e.load_factor_band == pytest.approx(config.PUBLISHED_LOAD_FACTOR_BAND)
+    assert e.gps_stoptime_rho_min == pytest.approx(config.GPS_STOPTIME_RHO_MIN)
 
 
 def test_bad_grade_rejected(tmp_path):
