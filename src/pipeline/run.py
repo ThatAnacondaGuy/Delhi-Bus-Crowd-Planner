@@ -11,7 +11,7 @@ from .paths import Paths
 STAGES = {
     "clean": "src.pipeline.clean:run",
     "resolve": "src.pipeline.resolve:run",
-    "network": "src.pipeline.network:run",
+    "network": "src.pipeline.network:run_clock",
     "loads": "src.pipeline.loads:run",
     "operator": "src.pipeline.operator:run",
     "validate": "src.pipeline.validate:run",
