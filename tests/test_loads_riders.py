@@ -62,7 +62,8 @@ def alight_rows(day=DAY):
     return rows
 
 
-def test_alighting_correction(con, tmp_path, toy_gtfs_dir):
+def test_alighting_correction(con, tmp_path, toy_gtfs_dir, monkeypatch):
+    monkeypatch.setattr(loads, "ALIGHTING_MIN_REVERSE_BOARD", 1)  # the toy reverse has only 2 terminal boardings
     paths = build(con, tmp_path, toy_gtfs_dir, alight_rows())
     stats = loads.run_riders(con, paths, correct_alighting=True)
     assert con.execute("SELECT route_id, terminal_alight, reverse_terminal_board, ratio, moved_pax "
@@ -112,3 +113,13 @@ def test_gate_raises_on_corrupted_pax(con, tmp_path, toy_gtfs_dir):
     con.execute("UPDATE stretch_riders SET pax = pax + 100 WHERE route_id=101 AND seq=1 AND minute=480")
     with pytest.raises(GateError):
         loads.check_rider_gate(con)
+
+
+def test_uninformative_reverse_moves_nothing(con, tmp_path, toy_gtfs_dir):
+    rows = [tk("Alpha Terminal", "Echo Depot", DAY, f"08:0{i}") for i in range(6)]
+    rows += [tk("Delta Metro", "Alpha Terminal", DAY, "10:00", route="101DOWN")]  # reverse: 0 terminal boardings
+    paths = build(con, tmp_path, toy_gtfs_dir, rows)
+    stats = loads.run_riders(con, paths)
+    assert con.execute("SELECT moved_pax, alighting_sensitive FROM terminal_asymmetry WHERE route_id=101"
+                       ).fetchall() == [(0.0, True)]
+    assert stretch_totals(con)[4] == 6 and stats.moved_pax == 0

@@ -123,3 +123,11 @@ def test_stats_and_dq(con, tmp_path, toy_gtfs_dir):
     network.run_clock(con, paths)
     dq = dict(con.execute("SELECT name, value FROM dq_clock").fetchall())
     assert dq["pairs"] == 2 and dq["fallback_cells"] > 0
+
+
+def test_ring_wrap_maps_per_r4():
+    canon = pd.DataFrame({"route_id": [401] * 4, "seq": [1, 2, 3, 4], "template_s": [0, 300, 300, 424],
+                          "operator": ["DTC"] * 4})
+    clock = network.Clock.from_frames(canon, pd.DataFrame(columns=["scope", "key", "hour", "factor", "n_pairs"]))
+    assert clock.template(401, 4) == 424 and clock.template(401, 5) == 300  # seq 5 -> 2
+    assert clock.travel_seconds(401, 3, 5, 480) == pytest.approx(424 + 300)

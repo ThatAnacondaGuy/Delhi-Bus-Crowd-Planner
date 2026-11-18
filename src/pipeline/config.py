@@ -137,3 +137,6 @@ SERVICE_CLASS_PATTERNS: dict[str, str] = {
     "office_special": r"^(DS|U-SPL|CV)-",
 }
 HUB_STOP_CATEGORIES = {"metro": r"\bmetro\b", "rail": r"\b(railway|rly)\b"}
+
+# R19: a reverse route with fewer terminal boardings than this (month) is uninformative for the alighting correction
+ALIGHTING_MIN_REVERSE_BOARD = 5

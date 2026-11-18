@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from .config import EXCLUDED_DATES, EXCLUDED_WINDOWS
+from .config import ALIGHTING_MIN_REVERSE_BOARD, EXCLUDED_DATES, EXCLUDED_WINDOWS
 from .errors import GateError
 from .network import Clock
 
@@ -64,24 +64,15 @@ def _day_type(col: str) -> str:
 
 # ---------------------------------------------------------------- clock tables
 
-def _tmpl(clock: Clock, rid: int, seq: int, n: int, ring: bool) -> float:
-    """Template seconds of the segment ending at stop seq; past the end of a ring it is the segment the
-    wrapped stretch maps onto (R4: stretch k > N-1 is stretch k-(N-1))."""
-    if ring and seq > n:
-        seq -= n - 1
-    return clock.template(rid, seq)
-
-
 def _clock_tables(con, clock: Clock) -> None:
     """_q(route_id, k, q): cumulative corrected-clock template seconds from stop 1 to stop k (ring-aware),
     _fh(route_id, hour, factor)."""
     mx = dict(con.execute("SELECT route_id, greatest(max(dest_seq), max(orig_seq)) FROM _rt GROUP BY 1").fetchall())
-    n = {r: (c, bool(g)) for r, c, g in con.execute("SELECT route_id, n_stops, is_ring FROM route_meta").fetchall()}
+    n = dict(con.execute("SELECT route_id, n_stops FROM route_meta").fetchall())
     rids, ks, qs, frid, fh, ff = [], [], [], [], [], []
     for rid, m in mx.items():
-        ns, ring = n.get(rid, (0, False))
-        top = max(m, ns) + 1
-        seg = np.array([0.0] + [_tmpl(clock, rid, s, ns, ring) for s in range(2, top + 1)])
+        top = max(m, n.get(rid, 0)) + 1
+        seg = np.array([0.0] + [clock.template(rid, s) for s in range(2, top + 1)])
         q = np.concatenate([[0.0], np.cumsum(seg)])[1:]       # q[k-1] = seconds to stop k
         rids.append(np.full(top, rid))
         ks.append(np.arange(1, top + 1))
@@ -98,7 +89,7 @@ def _clock_tables(con, clock: Clock) -> None:
         con.unregister("_df")
 
 
-def _exact_ticket_rm(clock: Clock, cols: dict, meta: dict) -> float:
+def _exact_ticket_rm(clock: Clock, cols: dict) -> float:
     """Rider-minutes of every ticket by stepping the Clock stretch by stretch (numpy over tickets per route);
     independent of the SQL expansion."""
     total = 0.0
@@ -106,8 +97,7 @@ def _exact_ticket_rm(clock: Clock, cols: dict, meta: dict) -> float:
     for rid, g in df.groupby("route_id"):
         o, d, t, p = (g[c].to_numpy() for c in ("orig_seq", "dest_seq", "m0", "pax"))
         top = int(d.max()) + 1
-        ns, ring = meta.get(int(rid), (0, False))
-        tmpl = np.array([0.0] + [_tmpl(clock, int(rid), s, ns, ring) for s in range(1, top + 1)])
+        tmpl = np.array([0.0] + [clock.template(int(rid), s) for s in range(1, top + 1)])
         fac = np.array(clock.hour_factors(int(rid)))
         pos, secs = o.astype(int).copy(), np.zeros(len(g))
         tt = t.astype(float).copy()
@@ -168,7 +158,7 @@ def _asymmetry(con, correct: bool) -> None:
                FROM _cs c JOIN rm USING (route_id) LEFT JOIN _bd bd ON bd.route_id = rm.opp AND bd.pkey = c.pkey
                WHERE c.seq BETWEEN 2 AND rm.n_stops - 1 GROUP BY 1)
         SELECT tt.route_id, rm.n_stops, rm.opp, tt.t_alight::DOUBLE AS t_alight,
-               coalesce((SELECT tot FROM btot WHERE btot.route_id = rm.opp) > 0, false) AS known,
+               coalesce((SELECT b FROM b1 WHERE b1.route_id = rm.opp) >= {ALIGHTING_MIN_REVERSE_BOARD}, false) AS known,
                (SELECT b FROM b1 WHERE b1.route_id = rm.opp) AS rev_board,
                CASE WHEN coalesce(dn.den, 0) > 0 AND coalesce(al.num, 0) > 0
                     THEN least(greatest(al.num / dn.den, {lo}), {hi}) ELSE 1.0 END AS ratio
@@ -341,8 +331,7 @@ def run_riders(con, paths=None, correct_alighting: bool = True, **_) -> RiderSta
                bool_or(corrected) AS corrected
         FROM _sr_stage GROUP BY route_id, seq, date, day_type, minute ORDER BY route_id, date, seq, minute""")
     cols = con.execute("SELECT route_id, orig_seq, dest_seq, m0, pax FROM _rt").fetchnumpy()
-    meta = {r: (c, bool(g)) for r, c, g in con.execute("SELECT route_id, n_stops, is_ring FROM route_meta").fetchall()}
-    ticket_rm = _exact_ticket_rm(clock, cols, meta)
+    ticket_rm = _exact_ticket_rm(clock, cols)
     dq = [("ticket_rm", ticket_rm), ("excluded_rm", excl), ("moved_rm", moved), ("expanded_rm", total)]
     con.register("_df", pd.DataFrame(dq, columns=["name", "value"]))
     con.execute("CREATE OR REPLACE TABLE dq_riders AS SELECT * FROM _df")

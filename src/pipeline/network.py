@@ -99,10 +99,13 @@ class Clock:
         return self.hour_factors(int(route_id))[int(hour) % 24]
 
     def template(self, route_id: int, seq: int) -> float:
-        """Template seconds of the segment ending at seq; on a ring, seq past N wraps round the route."""
+        """Template seconds of the segment ending at seq; on a ring, seq past N maps per R4 (k -> k - (N-1))."""
         t = self._tmpl[route_id]
         n = len(t)
-        v = t[(seq - 1) % n]
+        if seq > n:
+            seq -= n - 1
+            seq = (seq - 1) % (n - 1) + 1 if n > 1 else seq
+        v = t[seq - 1]
         if v == 0 and seq > 1:
             nz = t[t > 0]
             v = nz.mean() if len(nz) else 0.0  # the unrecorded closing segment of a ring
