@@ -10,13 +10,13 @@ This is a check of the model against things we can compare it with. No field cou
 - Scale ceiling: the operator scale may not exceed 3 times E. For DTC the ceiling binds; the unallocated share of published DTC ridership is 59.2%. For the cluster operator the ceiling binds and 73.2% of its published ridership is unallocated: the model places only the rest on routes, so cluster loads are, if anything, understated.
 - Ticket-pair run-time window: observed / template ratios from 0.4-2.5 are used. With the wider 0.25-4 window the DTC 18:00 factor is 1.521 instead of 1.423 (08:00: 1.033 instead of 1.003).
 - Week to week: 76.2% of commuter-facing cells (rider-weighted) keep their level between two different weeks of the month; load correlation 0.780. A week held out lands inside the sampling range in 62.6% of cells. Secondary, not independent (the runs share three weeks): dropping one week from the full month leaves 94.7% unchanged.
-- Pre-registered corridors: 2 of 2 strong, 4 of 4 moderate, 4 of 4 weak), the primary rule's result: 10 of 10 in all, but that rule turned out to be weak: 10.0 of 10 hits would be expected if the same number of stretches per corridor were drawn at random (seeded simulation, 2000 draws per corridor, seed 25, stretches drawn without replacement from the 12,603 weekday stretches with service). The informative readings are the enrichment (on average 19.0% of mapped stretches are in the top decile, against 10% at random) and the stricter both-ends mapping (7 of 10).
+- Pre-registered corridors: 2 of 2 strong, 4 of 4 moderate, 4 of 4 weak; 10 of 10 in all. That primary rule turned out to be weak: 10.0 of 10 hits would be expected if the same number of stretches per corridor were drawn at random (seeded simulation, 2000 draws per corridor, seed 25, stretches drawn without replacement from the 12,603 weekday stretches with service). The informative readings are the enrichment (on average 19.0% of mapped stretches are in the top decile, against 10% at random) and the stricter both-ends mapping (7 of 10).
 - Published figures: modelled DTC bus-km 496,158 per day against 501,000 (hit); modelled load factor 0.540 against the 0.78-0.89 band (miss).
 - Scheduled DTC bus-km is 2.29 times the published figure (implied share of trips run about 0.44 if the published figure is right). The model applies the share of trips that ran, measured from GPS, which is 0.43 bus-km weighted for DTC. The model figure counts each scheduled trip's segments once, on the feed's single service day, the same per-day basis as the published figure.
 - Routes whose last stretches depend on the alighting correction: 662.
 - Coverage: 93.6% of scheduled bus-km has a commuter-facing level, 4.7% rests on many tickets.
 - GPS layer: in: bus supply is scheduled buses times the share that ran (GPS, ten sample days); the stop-time corroboration is not built and is not counted as a miss.
-- Run time of the validation stage: 114 s.
+- Run time of the validation stage: 44 s.
 
 ## A. Gates (a failure stops the run)
 
