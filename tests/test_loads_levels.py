@@ -253,3 +253,24 @@ def test_outputs_and_planner_export(con, tmp_path, toy_gtfs_dir):
 def test_loads_stage_runs_riders_then_levels():
     from src.pipeline import run
     assert run.STAGES["loads"] == "src.pipeline.loads:run_loads"
+
+
+def test_bound_uses_weekday_peak_cells_only(con, tmp_path, toy_gtfs_dir, monkeypatch):
+    rows = [a2b(DAY, "08:00") for _ in range(40)] + [a2b(DAY, "14:00") for _ in range(35)]  # off-peak is heavier
+    rows += [tk("Echo Depot", "Delta Metro", DAY, "10:00", route="101DOWN") for _ in range(10)]
+    paths = build(con, tmp_path, toy_gtfs_dir, rows, published={"DTC": 3000.0, "DIMTS": 5.0}, monkeypatch=monkeypatch)
+    loads.run_levels(con, paths)
+    peak = cr(con, "route_id=101 AND day_type='weekday' AND tickets >= 30 AND window_start_min BETWEEN 420 AND 650")
+    off = cr(con, "route_id=101 AND day_type='weekday' AND tickets >= 30 AND window_start_min BETWEEN 750 AND 900")
+    assert len(peak) > 0 and len(off) > 0
+    bound = 100 / np.quantile(peak.app_riders / peak.buses, 0.95)
+    assert con.execute("SELECT bound FROM _er WHERE route_id=101").fetchone()[0] == pytest.approx(bound, rel=2e-3)
+
+
+def test_corridor_zero_not_null_without_crowding(con, tmp_path, toy_gtfs_dir, monkeypatch):
+    paths = build(con, tmp_path, toy_gtfs_dir, [a2b(DAY, "08:00")], published={"DTC": 2.0, "DIMTS": 5.0},
+                  monkeypatch=monkeypatch)
+    loads.run_levels(con, paths)
+    cv = pd.read_parquet(paths.processed / "corridor_values.parquet")
+    assert len(cv) > 0 and cv.share_crowded.notna().all() and cv.crowded_rider_min.notna().all()
+    assert (cv.share_crowded == 0).any() and (cv.crowded_rider_min == 0).any()

@@ -19,7 +19,7 @@ import pandas as pd
 from .clean import excluded
 from .config import (ALIGHTING_LAST_STRETCHES, ALIGHTING_MIN_REVERSE_BOARD, BOUND_MIN_TICKETS, BOUND_PERCENTILE,
                      CORRIDOR_SIMPLIFY_M, EXCLUDED_DATES, EXCLUDED_WINDOWS, LOW_APP_USE_FRACTION,
-                     NO_DATA_PERCENTILE, PLANNER_TABLES, PUBLISHED_RIDERSHIP, S0_MAX_SHARE, SCALE_RANGE, E_SCALE_CEILING_MULT,
+                     NO_DATA_PERCENTILE, PEAK_WINDOWS_MIN, PLANNER_TABLES, PUBLISHED_RIDERSHIP, S0_MAX_SHARE, SCALE_RANGE, E_SCALE_CEILING_MULT,
                      SEATS_FRACTION, SUPPLY_WIDEN_MIN, WINDOWS)
 from .errors import GateError
 from .network import Clock
@@ -621,10 +621,11 @@ def _low_app_use(con, nday: dict) -> None:
 
 def _scale(con, cells: str = "_cell") -> tuple[dict, dict, dict, set, list, dict]:
     """Per operator: E_op, the capacity bounds, the water-filled E*; fills _er(route_id, e_r, bound, capped)."""
+    peak = " OR ".join(f"(c.w >= {a} AND c.w < {b})" for a, b in PEAK_WINDOWS_MIN)
     bounds = dict(con.execute(f"""
         SELECT c.route_id, s.crush / quantile_cont(c.l, {BOUND_PERCENTILE}) AS b
         FROM {cells} c JOIN route_specs s USING (route_id)
-        WHERE c.day_type = 'weekday' AND c.tickets >= {BOUND_MIN_TICKETS} AND c.l > 0
+        WHERE c.day_type = 'weekday' AND c.tickets >= {BOUND_MIN_TICKETS} AND c.l > 0 AND ({peak})
         GROUP BY c.route_id, s.crush HAVING quantile_cont(c.l, {BOUND_PERCENTILE}) > 0""").fetchall())
     app = con.execute("SELECT route_id, operator, app FROM _app").fetchall()
     e_op, e_star, er, capped, infeasible, ops = {}, {}, {}, set(), [], {}
@@ -758,8 +759,8 @@ def _corridor(con, paths, clock: Clock) -> int:
         SELECT from_stop_id || '-' || to_stop_id AS pair_id, any_value(from_stop_id) AS from_stop_id,
                any_value(to_stop_id) AS to_stop_id, c.day_type, c.window_start_min,
                round(sum(c.buses * c.people_mid) / sum(c.buses * c.rated_total), 4) AS load_ratio,
-               round(sum(c.buses) FILTER (WHERE c.level = 'crowded') / sum(c.buses), 4) AS share_crowded,
-               round(sum(c.buses * c.people_mid * d.dur_min) FILTER (WHERE c.level = 'crowded')
+               round(coalesce(sum(c.buses) FILTER (WHERE c.level = 'crowded'), 0) / sum(c.buses), 4) AS share_crowded,
+               round(coalesce(sum(c.buses * c.people_mid * d.dur_min) FILTER (WHERE c.level = 'crowded'), 0)
                      * CASE WHEN c.day_type = 'weekday' THEN 30.0 / 90 ELSE 60.0 / 120 END, 1) AS crowded_rider_min,
                round(sum(c.buses), 2) AS buses, count(*)::INT AS routes
         FROM stretch_crowding c
