@@ -19,8 +19,23 @@ STAGES = {
 }
 
 
-def stage_inputs(paths: Paths) -> dict[str, str]:
-    return {"tickets_csv": str(paths.tickets_csv)}
+GTFS_FILES = ("routes.txt", "trips.txt", "stop_times.txt", "stops.txt")
+
+# Files each stage reads itself (stage name -> paths -> {key: file}).
+STAGE_INPUTS = {
+    "clean": lambda p: {"tickets_csv": p.tickets_csv},
+    "resolve": lambda p: {f"gtfs_{f.removesuffix('.txt')}": p.gtfs_dir / f for f in GTFS_FILES},
+}
+
+
+def stage_inputs(paths: Paths, stage: str) -> dict[str, str]:
+    """Files whose change makes `stage` stale: its own inputs plus every earlier stage's."""
+    out: dict[str, str] = {}
+    for name in STAGES:
+        out.update({k: str(v) for k, v in STAGE_INPUTS.get(name, lambda p: {})(paths).items()})
+        if name == stage:
+            break
+    return out
 
 
 def _load(spec: str):
@@ -45,7 +60,6 @@ def main(argv=None, paths: Paths | None = None) -> int:
     paths = paths or Paths.from_env()
     paths.processed.mkdir(parents=True, exist_ok=True)
     mpath = paths.processed / "manifest.json"
-    inputs = stage_inputs(paths)
     params = {"sample": args.sample, "gps_raw": args.gps_raw, "gps_days": args.gps_days}
 
     con = connect(str(paths.work_db))
@@ -58,6 +72,7 @@ def main(argv=None, paths: Paths | None = None) -> int:
                 "gps_days": args.gps_days.split(",") if args.gps_days else None, "force": args.force}
         for name, spec in STAGES.items():
             fn = _load(spec)
+            inputs = stage_inputs(paths, name)
             if fn is None:
                 print(f"stage {name}: not implemented yet, skipped")
             elif not args.force and manifest.is_done(name, inputs, params, path=mpath):

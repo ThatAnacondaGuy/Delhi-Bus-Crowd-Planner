@@ -54,3 +54,34 @@ def test_kwargs_stage_gets_all_options(tmp_path, monkeypatch):
     run.main(["--until", "b", "--force", "--gps-raw"], paths=paths)
     assert seen["force"] is True and seen["gps_raw"] is True and "sample_routes" in seen
     assert seen["narrow_force"] is True
+
+
+GTFS_NAMES = ("routes", "trips", "stop_times", "stops")
+
+
+def test_stage_inputs_resolve_adds_gtfs():
+    p = Paths.default()
+    assert run.stage_inputs(p, "clean") == {"tickets_csv": str(p.tickets_csv)}
+    ins = run.stage_inputs(p, "resolve")
+    assert ins["tickets_csv"] == str(p.tickets_csv)
+    assert {ins[f"gtfs_{n}"] for n in GTFS_NAMES} == {str(p.gtfs_dir / f"{n}.txt") for n in GTFS_NAMES}
+    assert set(ins) <= set(run.stage_inputs(p, "network"))   # later stages inherit upstream inputs
+
+
+def test_gtfs_change_reruns_resolve_only(tmp_path, monkeypatch):
+    csv = make_tickets(tmp_path, [{"created_at": "2026-10-05 08:00:00+05:30"}])
+    gtfs = tmp_path / "gtfs"
+    gtfs.mkdir()
+    for n in GTFS_NAMES:
+        (gtfs / f"{n}.txt").write_text("x\n")
+    base = Paths.default()
+    paths = Paths(base.repo, gtfs, csv, base.gps_archive, base.gps_aggregates, tmp_path / "out")
+    calls = []
+    monkeypatch.setattr(run, "_load", lambda spec: (lambda con, paths: calls.append(spec)))
+    monkeypatch.setattr(run, "STAGES", {"clean": "c", "resolve": "r"})
+    run.main(["--until", "resolve"], paths=paths)
+    run.main(["--until", "resolve"], paths=paths)
+    assert calls == ["c", "r"]
+    (gtfs / "stops.txt").write_text("changed\n")
+    run.main(["--until", "resolve"], paths=paths)
+    assert calls == ["c", "r", "r"]

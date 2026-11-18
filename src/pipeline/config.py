@@ -91,6 +91,12 @@ DEVI_VEHICLE_MIN_TICKETS = 5
 DEVI_ROUTE_SHARE = 0.5
 PLACE_RADIUS_M = 400
 
+# Ticket resolution (design §5.3)
+STOP_FUZZY_MIN_SCORE = 78.0  # assumption: route-scoped RapidFuzz floor kept from the old resolver (93% stop match)
+ALIAS_MIN_IN_ORDER = 0.8     # an alias needs >= 80% of its tickets resolving in stop order on the route
+MERGE_MIN_ORDERED = 0.9      # two GTFS routes merge only at >= 90% ordered stop match and the same termini
+REMAP_MIN_REVERSED = 0.5     # a route string swaps to its opposite when MORE than half its resolvable tickets are reversed
+
 # GPS and planner constants
 GPS_COVERAGE_MIN = 0.8
 GPS_TRIP_STOP_SHARE = 0.8
