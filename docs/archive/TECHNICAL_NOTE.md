@@ -1,3 +1,5 @@
+> Superseded on 18 Nov 2026 by the Phase 1 rebuild. Numbers here describe the old model and are not current.
+
 # Technical Note: Mathematical Methodology, Calibration & Empirical Validation
 ### Transport Stack Hackathon 2026 — Phase 1 (Problem 2)
 **Crowdedness-Aware Bus Journey Planner for Delhi (DTC / DIMTS Cluster)**

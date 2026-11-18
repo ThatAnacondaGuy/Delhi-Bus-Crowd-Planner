@@ -1,3 +1,5 @@
+> Superseded on 18 Nov 2026 by the Phase 1 rebuild. Numbers here describe the old model and are not current.
+
 # Phase 1 Proposal: Crowdedness-Aware Bus Journey Planner for Delhi (DTC / Cluster)
 ### Transport Stack Hackathon 2026 — Phase 1 (Problem 2)
 **Prepared for the Evaluation Committee:** Centre for Sustainable Mobility (CSM), IIIT-Delhi | Chartr / ONDC | JICA

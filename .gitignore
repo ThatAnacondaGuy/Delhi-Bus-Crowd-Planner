@@ -44,9 +44,18 @@ Thumbs.db
 data/raw/*
 !data/raw/.gitkeep
 
-# Exclude generated large binary Parquet and Pickle models
-data/processed/*.parquet
-data/processed/*.pkl
+# Generated data and binary artifacts
+data/processed_/
+*.parquet
+*.pkl
+*.geojson
+*.7z
+*.duckdb
+data/processed/*
 
-# Ensure validation summary JSON reports remain tracked
+# Re-includes (must stay after the patterns above)
 !data/processed/*.json
+!data/processed/*.md
+!data/processed/*.csv
+!data/gps_aggregates/**
+!tests/fixtures/**
