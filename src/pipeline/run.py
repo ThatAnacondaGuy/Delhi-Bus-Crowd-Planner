@@ -2,6 +2,7 @@
 import argparse
 import importlib
 import inspect
+import time
 
 from . import manifest
 from .db import connect
@@ -83,8 +84,10 @@ def main(argv=None, paths: Paths | None = None) -> int:
                     kwargs = dict(opts)
                 else:
                     kwargs = {k: v for k, v in opts.items() if k in accepted}
+                t0 = time.perf_counter()
                 result = fn(con, paths, **kwargs)
-                print(f"stage {name}: done {result if result is not None else ''}".rstrip())
+                took = time.perf_counter() - t0
+                print(f"stage {name}: done {result if result is not None else ''} ({took:.1f} s)".replace("  (", " (").rstrip())
                 manifest.mark_done(name, inputs, [str(paths.work_db)], params, path=mpath)
             if name == args.until:
                 break

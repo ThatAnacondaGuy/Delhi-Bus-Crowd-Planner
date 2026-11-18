@@ -455,10 +455,12 @@ def _unnest_windows(col: str, step: int, half: int, last_j: int) -> str:
             f"least(CAST(floor(({col} + {half}) / {step}.0) AS BIGINT), {last_j}) + 1))")
 
 
-def effective_days(con) -> pd.DataFrame:
+def effective_days(con, skip=()) -> pd.DataFrame:
     """(day_type, w, n_days): clean days per window, a day counting by the share of the base window that is
     not excluded (R8 half-open windows; equals the plain clean-day count when no window is cut)."""
-    days = con.execute("SELECT date, day_type FROM clean_days WHERE NOT is_excluded_date").fetchall()
+    skip = {str(d) for d in skip}
+    days = [(d, t) for d, t in con.execute("SELECT date, day_type FROM clean_days WHERE NOT is_excluded_date").fetchall()
+            if str(d) not in skip]
     rows = []
     for dt, spec in WINDOWS.items():
         half = spec.base_min // 2
@@ -473,14 +475,23 @@ def effective_days(con) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["day_type", "w", "n_days"])
 
 
-def clean_day_totals(con) -> dict[str, float]:
+def clean_day_totals(con, skip=()) -> dict[str, float]:
     """Effective clean days per day type over the whole day: each non-excluded date counts by the share of its
     minutes outside the excluded windows (a day inside an excluded window counts 0)."""
     out: dict[str, float] = {}
+    skip = {str(d) for d in skip}
     for d, dt in con.execute("SELECT date, day_type FROM clean_days WHERE NOT is_excluded_date").fetchall():
+        if str(d) in skip:
+            continue
         base = datetime(d.year, d.month, d.day)
         out[dt] = out.get(dt, 0.0) + 1 - sum(excluded(base + timedelta(minutes=m)) for m in range(1440)) / 1440
     return out
+
+
+def _skip_sql(col: str, skip) -> str:
+    """SQL predicate excluding the dates in `skip` (empty string when there are none); Task 12 leaves weeks out."""
+    dates = ", ".join(f"DATE '{d}'" for d in skip)
+    return f" AND {col} NOT IN ({dates})" if dates else ""
 
 
 def _register(con, name: str, df: pd.DataFrame) -> None:
@@ -526,7 +537,7 @@ def _supply(con) -> None:
         FROM (SELECT route_id, seq, m // 60 AS h, count(*) AS c FROM _pm GROUP BY ALL) GROUP BY route_id, h""")
 
 
-def _rider_cells(con) -> None:
+def _rider_cells(con, skip=()) -> None:
     """_ry: per (route, stretch, day type, window) the sum over clean days of daily rider counts and of their
     squares (days without riders contribute zero), plus tickets."""
     con.execute("CREATE OR REPLACE TEMP TABLE _ry AS " + _windows(lambda dt, step, half, wh, last_j: f"""
@@ -536,7 +547,7 @@ def _rider_cells(con) -> None:
               FROM (SELECT s.route_id, s.seq, s.date, s.pax, s.tickets,
                            {_unnest_windows('s.minute', step, half, last_j)} AS j
                     FROM stretch_riders s JOIN _elig e ON e.route_id = s.route_id AND e.day_type = s.day_type
-                    WHERE s.day_type = '{dt}')
+                    WHERE s.day_type = '{dt}'{_skip_sql('s.date', skip)})
               GROUP BY route_id, seq, date, j)
         GROUP BY route_id, seq, j"""))
 
@@ -584,14 +595,14 @@ def _cells(con, nd: pd.DataFrame) -> None:
         FROM t WHERE src IS NOT NULL""")
 
 
-def _route_level(con, n_clean: int) -> None:
+def _route_level(con, n_clean: float, skip=()) -> None:
     """_app(route_id, operator, app): resolved passengers per clean day; _rnd: the no-data rule."""
     ex = _excluded_sql("CAST(timezone('Asia/Kolkata', t.ts) AS TIMESTAMP)", "t.date")
     con.execute(f"""
         CREATE OR REPLACE TEMP TABLE _app AS
         SELECT m.route_id, m.operator, coalesce(a.pax, 0) / {n_clean} AS app
         FROM route_meta m LEFT JOIN (SELECT t.route_id, sum(t.pax) AS pax FROM tickets_resolved t
-                                     WHERE NOT {ex} GROUP BY 1) a USING (route_id)""")
+                                     WHERE NOT {ex}{_skip_sql('t.date', skip)} GROUP BY 1) a USING (route_id)""")
     con.execute("""
         CREATE OR REPLACE TEMP TABLE _rnd AS
         WITH tr AS (SELECT route_id, count(*) AS trips FROM _pm WHERE seq = 1 GROUP BY 1),
@@ -600,14 +611,15 @@ def _route_level(con, n_clean: int) -> None:
         FROM r""", [NO_DATA_PERCENTILE])
 
 
-def _low_app_use(con, nday: dict) -> None:
+def _low_app_use(con, nday: dict, skip=()) -> None:
     """_low(route_id, seq, day_type): app riders per scheduled bus on a stop pair served by >= 2 routes
     below a third of the pair's median across routes that sell tickets."""
     _register(con, "_nday", pd.DataFrame(list(nday.items()), columns=["day_type", "n"]))
     con.execute(f"""
         CREATE OR REPLACE TEMP TABLE _low AS
         WITH y AS (SELECT s.route_id, s.seq, s.day_type, sum(s.pax) / any_value(n.n) AS y
-                   FROM stretch_riders s JOIN _nday n USING (day_type) GROUP BY ALL),
+                   FROM stretch_riders s JOIN _nday n USING (day_type)
+                   WHERE true{_skip_sql('s.date', skip)} GROUP BY ALL),
         sd AS (SELECT p.route_id, p.seq, e.day_type, count(*) AS s_day
                FROM _pm p JOIN _elig e USING (route_id) GROUP BY ALL),
         rt AS (SELECT sd.route_id, sd.seq, sd.day_type, pr.from_stop_id, pr.to_stop_id,
@@ -619,14 +631,16 @@ def _low_app_use(con, nday: dict) -> None:
         WHERE md.n >= 2 AND rt.rate < md.med * {LOW_APP_USE_FRACTION}""")
 
 
-def _scale(con, cells: str = "_cell") -> tuple[dict, dict, dict, set, list, dict]:
-    """Per operator: E_op, the capacity bounds, the water-filled E*; fills _er(route_id, e_r, bound, capped)."""
+def _scale(con, cells: str = "_cell", specs: str = "route_specs", use_bound: bool = True,
+           ceil_mult: float = E_SCALE_CEILING_MULT) -> tuple[dict, dict, dict, set, list, dict]:
+    """Per operator: E_op, the capacity bounds, the water-filled E*; fills _er(route_id, e_r, bound, capped).
+    specs, use_bound and ceil_mult exist for the sensitivity runs (Task 12); the pipeline uses the defaults."""
     peak = " OR ".join(f"(c.w >= {a} AND c.w < {b})" for a, b in PEAK_WINDOWS_MIN)
     bounds = dict(con.execute(f"""
         SELECT c.route_id, s.crush / quantile_cont(c.l, {BOUND_PERCENTILE}) AS b
-        FROM {cells} c JOIN route_specs s USING (route_id)
+        FROM {cells} c JOIN {specs} s USING (route_id)
         WHERE c.day_type = 'weekday' AND c.tickets >= {BOUND_MIN_TICKETS} AND c.l > 0 AND ({peak})
-        GROUP BY c.route_id, s.crush HAVING quantile_cont(c.l, {BOUND_PERCENTILE}) > 0""").fetchall())
+        GROUP BY c.route_id, s.crush HAVING quantile_cont(c.l, {BOUND_PERCENTILE}) > 0""").fetchall()) if use_bound else {}
     app = con.execute("SELECT route_id, operator, app FROM _app").fetchall()
     e_op, e_star, er, capped, infeasible, ops = {}, {}, {}, set(), [], {}
     for op, src in PUBLISHED_RIDERSHIP.items():
@@ -635,7 +649,7 @@ def _scale(con, cells: str = "_cell") -> tuple[dict, dict, dict, set, list, dict
         if tot <= 0:
             continue
         e_op[op] = src.value / tot
-        ceil = E_SCALE_CEILING_MULT * e_op[op]
+        ceil = ceil_mult * e_op[op]
         e, e_r = waterfill(by, bounds, src.value, ceil)
         e_star[op] = e
         er.update(e_r)
@@ -669,15 +683,17 @@ def _durations(con, clock: Clock) -> None:
 
 # ---------------------------------------------------------------- final table
 
-def _build_crowding(con) -> None:
+def _build_crowding(con, out: str = "stretch_crowding", specs: str = "route_specs", e_mult: float = 1.0,
+                    temp: bool = False) -> None:
+    """stretch_crowding (or a Task 12 variant: `out` as a TEMP table, other specs, E scaled by e_mult)."""
     lo, hi = SCALE_RANGE
     con.execute(f"""
-        CREATE OR REPLACE TABLE stretch_crowding AS
+        CREATE OR REPLACE {'TEMP ' if temp else ''}TABLE {out} AS
         WITH base AS (
             SELECT m.route_id, m.short_name, m.operator, m.direction, c.seq, p.from_stop_id, p.to_stop_id,
                    p.from_name, p.to_name, c.day_type, c.w::INT AS window_start_min,
                    c.y_day AS app_riders, c.tickets, c.s AS buses, c.src AS bus_source,
-                   b.share_9m, sp.seats, sp.rated_total, sp.crush, er.e_r, er.bound, er.capped,
+                   b.share_9m, sp.seats, sp.rated_total, sp.crush, er.e_r * {e_mult} AS e_r, er.bound, er.capped,
                    c.l, c.se_l, m.n_stops,
                    coalesce(r.no_data, true) AS route_no_data,
                    (c.src = 'none') AS mismatch,
@@ -685,7 +701,7 @@ def _build_crowding(con) -> None:
                    coalesce(ta.alighting_sensitive, false) AS alight,
                    (e.office AND c.day_type = 'weekday') AS office
             FROM _cell c JOIN route_meta m USING (route_id) JOIN _pair p USING (route_id, seq)
-            JOIN bus_mix b USING (route_id) JOIN route_specs sp USING (route_id)
+            JOIN bus_mix b USING (route_id) JOIN {specs} sp USING (route_id)
             JOIN _er er USING (route_id) LEFT JOIN _rnd r USING (route_id)
             JOIN _elig e ON e.route_id = c.route_id AND e.day_type = c.day_type
             LEFT JOIN _low lw ON lw.route_id = c.route_id AND lw.seq = c.seq AND lw.day_type = c.day_type

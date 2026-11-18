@@ -149,3 +149,20 @@ PLANNER_TABLES = ("canonical_stops", "segment_shapes", "places", "hub_alias", "p
                   "service_class", "runtime_factors", "bus_mix", "route_specs")
 E_SCALE_CEILING_MULT = 3.0     # R21 modelling assumption: E*_op <= 3 x E_op (Task 12 varies it); the total may then fall short
 PEAK_WINDOWS_MIN = [(420, 660), (1020, 1260)]  # R22: weekday peak window labels, 07:00-11:00 and 17:00-21:00
+
+# Task 12: validation (design 5.8). Everything below is fixed before the first full validation run.
+CORRIDOR_TOP_QUANTILE = 0.9            # "top decile" of weekday crowded rider-minutes per km in the peak window
+CENTRE_POINTS = [(28.6315, 77.2167), (28.6286, 77.2410)]  # Connaught Place and ITO: "the centre" for inbound
+RADIAL_NEAR_KM = 8.0                   # a radial route's nearer terminal is within this of the centre ...
+RADIAL_SPREAD_KM = 5.0                 # ... and its farther terminal is at least this much farther out
+RADIAL_AM = (480, 600)                 # 08:00-10:00 window labels for the inbound/outbound comparison
+RADIAL_PM = (1020, 1200)               # 17:00-20:00
+TICKET_BANDS = [(0, 0, "0"), (1, 29, "1-29"), (30, 99, "30-99"), (100, None, "100+")]  # tickets per cell
+SENSITIVITY_E = 0.3                    # E +-30%
+SENSITIVITY_CAPACITY = 0.1             # capacity +-10%
+SENSITIVITY_9M_SHARE = 0.9             # the vehicle rule at 90% instead of 50%
+SENSITIVITY_CEILINGS = (2.0, 5.0)      # extra cases for the E* ceiling multiplier (R21)
+OVER_CAPACITY_TOP_ROUTES = 15
+RESOLUTION_MIN_SHARE = 0.8             # routes with a smaller share of their tickets resolved are listed
+RESOLUTION_MIN_TICKETS = 50
+PAIR_WINDOW_ALTERNATIVE = (0.25, 4.0)  # R17: the wider ticket-pair ratio window shown beside the 0.4-2.5 default
