@@ -96,6 +96,8 @@ STOP_FUZZY_MIN_SCORE = 78.0  # assumption: route-scoped RapidFuzz floor kept fro
 ALIAS_MIN_IN_ORDER = 0.8     # an alias needs >= 80% of its tickets resolving in stop order on the route
 MERGE_MIN_ORDERED = 0.9      # two GTFS routes merge only at >= 90% ordered stop match and the same termini
 REMAP_MIN_REVERSED = 0.5     # a route string swaps to its opposite when MORE than half its resolvable tickets are reversed
+# Variant tokens dropped from route names to find alias candidates (ruling R16): STL/LSTL, EXT/EXTN, EXP, SPL.
+ROUTE_VARIANT_TOKENS = r"L?STL|EXTN?|EXP|SPL"
 
 # GPS and planner constants
 GPS_COVERAGE_MIN = 0.8

@@ -1,22 +1,26 @@
 """Stage 2: resolve cleaned tickets to GTFS routes and canonical stop positions (design §5.3).
 
 Tables written to the work database:
-- route_meta: one row per GTFS route: short_name, operator, direction, n_stops, is_ring (canonical
-  first stop_id = last stop_id), is_devi and opposite_route_id.
+- route_meta: one row per GTFS route: short_name, operator, direction, n_stops, is_ring (the canonical
+  first and last stops are the same stop_id or within PLACE_RADIUS_M of each other; rulings R4, R15),
+  is_devi and opposite_route_id.
 - canonical_stops: each route's longest trip renumbered 1..N. template_s is the scheduled run time
   of the segment ENDING at the stop (0 at seq 1); cum_template_s is its running total.
 - route_map: one row per ticket route string: the GTFS route it maps to, match_type (exact, alias,
-  remap, unmatched) and the evidence for the decision as JSON.
+  remap, unmatched) and the evidence for the decision as JSON. Aliases come from alias_key, then
+  (ruling R16) from variant_key, which also drops variant tokens such as STL and EXT.
 - tickets_resolved: tickets placed on a route as orig_seq -> dest_seq. how is forward, remapped (a
-  reversed ticket that runs forward on the opposite route) or ring_wrap. A ring_wrap ticket's
+  ticket that runs forward on the opposite route instead) or ring_wrap. A ring_wrap ticket's
   dest_seq is its stop's seq + (N - 1), i.e. on the second lap, so it can exceed N; later stages map
   stretch k > N - 1 back to k - (N - 1).
-- tickets_rejected: every other ticket, with reason unmatched_route, unmatched_stop, same_stop or
-  reversed. dq_resolve counts tickets and passengers per reason.
+- tickets_rejected: every other ticket, with reason unmatched_route, unmatched_stop, ambiguous_stop
+  (ruling R14: a stop name tied between positions), same_stop or reversed. dq_resolve counts tickets
+  and passengers per reason.
 """
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -27,12 +31,13 @@ import pandas as pd
 import pyarrow as pa
 from rapidfuzz import fuzz, process
 
-from .config import ALIAS_MIN_IN_ORDER, MERGE_MIN_ORDERED, REMAP_MIN_REVERSED, STOP_FUZZY_MIN_SCORE
+from .config import (ALIAS_MIN_IN_ORDER, MERGE_MIN_ORDERED, PLACE_RADIUS_M, REMAP_MIN_REVERSED,
+                     ROUTE_VARIANT_TOKENS, STOP_FUZZY_MIN_SCORE)
 from .errors import GateError
 from .routes import alias_key, is_devi, opposite, pair_key, parse_route
 
 GTFS_FILES = ("routes.txt", "trips.txt", "stop_times.txt", "stops.txt")
-REJECT_REASONS = ("unmatched_route", "unmatched_stop", "same_stop", "reversed")
+REJECT_REASONS = ("unmatched_route", "unmatched_stop", "ambiguous_stop", "same_stop", "reversed")
 _IN_ORDER = ("forward", "ring_wrap")
 
 
@@ -48,6 +53,9 @@ class ResolveStats:
     ring_wrap: int
     aliases: int                         # route strings mapped by alias
     routes_remapped: int                 # route strings swapped to the opposite route (majority rule)
+    variant_aliases: int                 # aliases found only after dropping variant tokens (R16)
+    variant_alias_pax: int               # resolved passengers on those aliases
+    rings: int                           # GTFS routes treated as rings
     routes: dict[str, int] = field(default_factory=dict)    # route strings per match_type
     rejected: dict[str, int] = field(default_factory=dict)  # tickets per rejection reason
 
@@ -116,11 +124,38 @@ def build_stop_index(stops: Iterable[tuple[int, str]]) -> StopIndex:
     return StopIndex({k: tuple(v) for k, v in keys.items()}, list(keys))
 
 
-def match_stop(raw: str | None, index: StopIndex) -> tuple[str, float, str] | None:
-    """Route-scoped match of one ticket stop name: (key, score, 'exact' | 'fuzzy'), or None.
+class StopMatch(NamedTuple):
+    key: str | None    # the matched StopIndex key; None when ambiguous
+    score: float
+    method: str        # exact, fuzzy or ambiguous
+
+
+def _fuzzy_best(qv: str, index: StopIndex) -> tuple[str | None, float] | None:
+    """Best fuzzy candidate for one query variant as (key, max(WRatio, token_sort_ratio)).
+
+    Candidates tied on the best WRatio are separated by token_sort_ratio, then partial_ratio (ruling
+    R14). WRatio alone gives 85.5 to any candidate sharing one word once the lengths differ by 1.5x.
+    The key is None when candidates at different positions stay tied.
+    """
+    res = process.extract(qv, index.choices, scorer=fuzz.WRatio, limit=None)
+    if not res:
+        return None
+    top = max(score for _, score, _ in res)
+    tied = [m for m, score, _ in sorted(res, key=lambda r: r[2]) if score == top]   # route order
+    if len(tied) > 1:
+        tie_break = {m: (fuzz.token_sort_ratio(qv, m), fuzz.partial_ratio(qv, m)) for m in tied}
+        best = max(tie_break.values())
+        tied = [m for m in tied if tie_break[m] == best]
+    final = max(top, fuzz.token_sort_ratio(qv, tied[0]))
+    return (tied[0] if len({index.keys[m] for m in tied}) == 1 else None), final
+
+
+def match_stop(raw: str | None, index: StopIndex) -> StopMatch | None:
+    """Route-scoped match of one ticket stop name, or None.
 
     The query is the normalized name plus its slash-separated parts. An exact key match wins;
-    otherwise the best RapidFuzz max(WRatio, token_sort_ratio) of at least STOP_FUZZY_MIN_SCORE.
+    otherwise the best RapidFuzz max(WRatio, token_sort_ratio) of at least STOP_FUZZY_MIN_SCORE
+    (method 'fuzzy'), or method 'ambiguous' when that best score is tied between positions.
     """
     if raw is None:
         return None
@@ -133,39 +168,39 @@ def match_stop(raw: str | None, index: StopIndex) -> tuple[str, float, str] | No
                 q_vars.append(pn)
     for qv in q_vars:
         if qv in index.keys:
-            return qv, 100.0, "exact"
-    best_score, best_key = -1.0, None
+            return StopMatch(qv, 100.0, "exact")
+    best = None
     if index.choices:
         for qv in q_vars:
-            res = process.extractOne(qv, index.choices, scorer=fuzz.WRatio)
-            if res:
-                m_str, score, _ = res
-                final = max(score, fuzz.token_sort_ratio(qv, m_str))
-                if final >= STOP_FUZZY_MIN_SCORE and final > best_score:
-                    best_score, best_key = final, m_str
-    if best_key is None:
+            cand = _fuzzy_best(qv, index)
+            if cand is not None and cand[1] >= STOP_FUZZY_MIN_SCORE and (best is None or cand[1] > best[1]):
+                best = cand
+    if best is None:
         return None
-    return best_key, round(best_score, 1), "fuzzy"
+    return StopMatch(best[0], round(best[1], 1), "fuzzy" if best[0] is not None else "ambiguous")
 
 
 def resolve_stops_route_scoped(pairs: Iterable[tuple[int, str]], indexes: dict[int, StopIndex]
-                               ) -> tuple[list[tuple], dict[str, int]]:
+                               ) -> tuple[list[tuple], list[tuple], dict[str, int]]:
     """Match unique (route_id, raw stop name) pairs against that route's canonical stops.
 
-    Returns one row (route_id, name, key, seq, score, method) per position the matched stop holds
-    on the route, and pair counts by method (exact, fuzzy, unmatched).
+    Returns one row (route_id, name, key, seq, score, method) per position a matched stop holds on
+    the route, the ambiguous (route_id, name) pairs, and pair counts by method.
     """
-    rows, counts = [], {"exact": 0, "fuzzy": 0, "unmatched": 0}
+    rows, ambiguous = [], []
+    counts = {"exact": 0, "fuzzy": 0, "ambiguous": 0, "unmatched": 0}
     for route_id, name in pairs:
         index = indexes.get(route_id)
         m = match_stop(name, index) if index is not None else None
         if m is None:
             counts["unmatched"] += 1
             continue
-        key, score, method = m
-        counts[method] += 1
-        rows.extend((route_id, name, key, seq, score, method) for seq in index.keys[key])
-    return rows, counts
+        counts[m.method] += 1
+        if m.key is None:
+            ambiguous.append((route_id, name))
+        else:
+            rows.extend((route_id, name, m.key, seq, m.score, m.method) for seq in index.keys[m.key])
+    return rows, ambiguous, counts
 
 
 # ---------------------------------------------------------------- GTFS: canonical stops, route meta
@@ -216,6 +251,7 @@ class Routes(NamedTuple):
     meta: dict[int, dict]                 # route_id -> route_meta row
     by_short: dict[str, int]              # GTFS short name -> route_id
     by_alias: dict[str, list[int]]        # alias_key(short name) -> route_ids
+    by_variant: dict[str, list[int]]      # variant_key(short name) -> route_ids
     indexes: dict[int, StopIndex]         # route_id -> stop index for route-scoped matching
     names: dict[int, list[str]]           # route_id -> normalized canonical stop names in seq order
 
@@ -249,6 +285,27 @@ def _opposites(parsed: dict[int, tuple], names: dict[int, list[str]]) -> dict[in
     return out
 
 
+def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 2 * 6_371_008.8 * math.asin(math.sqrt(a))
+
+
+def _is_ring(n_stops: int, first, last, ends: tuple) -> bool:
+    """A ring's canonical first and last stops are the same stop_id (R4) or within PLACE_RADIUS_M (R15)."""
+    if n_stops < 3:
+        return False
+    if first == last:
+        return True
+    return None not in ends and haversine_m(*ends) <= PLACE_RADIUS_M
+
+
+def variant_key(raw: str) -> str:
+    """alias_key of a route string after dropping variant tokens (STL/LSTL, EXT/EXTN, EXP, SPL;
+    ruling R16). The direction is kept, so a match always runs the same way."""
+    return alias_key(re.sub(ROUTE_VARIANT_TOKENS, "", (raw or "").upper()))
+
+
 def build_route_meta(con) -> Routes:
     """route_meta from _gtfs_routes and canonical_stops; returns the lookups resolution needs."""
     stops = defaultdict(list)
@@ -258,38 +315,42 @@ def build_route_meta(con) -> Routes:
     names = {rid: [normalize_transit_text(n) for _, n in s] for rid, s in stops.items()}
     rows = con.execute("""
         SELECT r.route_id, r.short_name, r.operator, count(c.seq)::INT AS n_stops,
-               arg_min(c.stop_id, c.seq) AS first_stop, arg_max(c.stop_id, c.seq) AS last_stop
+               arg_min(c.stop_id, c.seq) AS first_stop, arg_max(c.stop_id, c.seq) AS last_stop,
+               arg_min(c.lat, c.seq), arg_min(c.lon, c.seq), arg_max(c.lat, c.seq), arg_max(c.lon, c.seq)
         FROM _gtfs_routes r LEFT JOIN canonical_stops c USING (route_id)
         GROUP BY ALL ORDER BY r.route_id""").fetchall()
     parsed = {rid: parse_route(short) for rid, short, *_ in rows}
     opp = _opposites(parsed, names)
     meta, out_rows = {}, []
-    for rid, short, operator, n_stops, first, last in rows:
+    for rid, short, operator, n_stops, first, last, *ends in rows:
         m = {"route_id": rid, "short_name": short, "operator": operator, "direction": parsed[rid].direction,
-             "n_stops": n_stops, "is_ring": n_stops >= 3 and first == last, "is_devi": is_devi(short),
+             "n_stops": n_stops, "is_ring": _is_ring(n_stops, first, last, tuple(ends)), "is_devi": is_devi(short),
              "opposite_route_id": opp[rid]}
         meta[rid] = m
         out_rows.append(tuple(m.values()))
     _load_arrow(con, "route_meta", {"route_id": pa.int64(), "short_name": pa.string(), "operator": pa.string(),
                                     "direction": pa.string(), "n_stops": pa.int32(), "is_ring": pa.bool_(),
                                     "is_devi": pa.bool_(), "opposite_route_id": pa.int64()}, out_rows)
-    by_alias = defaultdict(list)
+    by_alias, by_variant = defaultdict(list), defaultdict(list)
     for rid, m in meta.items():
         by_alias[alias_key(m["short_name"])].append(rid)
-    return Routes(meta, {m["short_name"]: rid for rid, m in meta.items()}, dict(by_alias),
+        by_variant[variant_key(m["short_name"])].append(rid)
+    return Routes(meta, {m["short_name"]: rid for rid, m in meta.items()}, dict(by_alias), dict(by_variant),
                   {rid: build_stop_index(s) for rid, s in stops.items()}, names)
 
 
 # ---------------------------------------------------------------- placing tickets on routes
 
 class _StopMatches:
-    """Route-scoped stop matches, computed once per unique (route_id, name) and kept in _stop_match."""
+    """Route-scoped stop matches, computed once per unique (route_id, name). _stop_match holds one row
+    per position of a matched stop; _stop_status says whether a pair matched or is ambiguous."""
 
     def __init__(self, con, indexes: dict[int, StopIndex]):
         self.con, self.indexes, self.done = con, indexes, set()
-        self.counts = {"exact": 0, "fuzzy": 0, "unmatched": 0}
+        self.counts = {"exact": 0, "fuzzy": 0, "ambiguous": 0, "unmatched": 0}
         con.execute("CREATE OR REPLACE TEMP TABLE _stop_match (route_id BIGINT, name VARCHAR, key VARCHAR, "
                     "seq INTEGER, score DOUBLE, method VARCHAR)")
+        con.execute("CREATE OR REPLACE TEMP TABLE _stop_status (route_id BIGINT, name VARCHAR, status VARCHAR)")
 
     def ensure(self, assign: str) -> None:
         pairs = self.con.execute(f"""
@@ -297,7 +358,7 @@ class _StopMatches:
             UNION SELECT a.route_id, t.end_raw FROM {assign} a JOIN _tix t USING (ticket_id)""").fetchall()
         todo = sorted(p for p in pairs if p[1] is not None and p not in self.done)
         self.done.update(todo)
-        rows, counts = resolve_stops_route_scoped(todo, self.indexes)
+        rows, ambiguous, counts = resolve_stops_route_scoped(todo, self.indexes)
         for k, v in counts.items():
             self.counts[k] += v
         if rows:
@@ -306,21 +367,30 @@ class _StopMatches:
                          "score": pa.float64(), "method": pa.string()}, rows, temp=True)
             self.con.execute("INSERT INTO _stop_match SELECT * FROM _stop_match_new")
             self.con.execute("DROP TABLE _stop_match_new")
+        status = sorted({(r[0], r[1], "matched") for r in rows}) + [(r, n, "ambiguous") for r, n in ambiguous]
+        if status:
+            _load_arrow(self.con, "_stop_status_new",
+                        {"route_id": pa.int64(), "name": pa.string(), "status": pa.string()}, status, temp=True)
+            self.con.execute("INSERT INTO _stop_status SELECT * FROM _stop_status_new")
+            self.con.execute("DROP TABLE _stop_status_new")
 
 
 def _place(con, assign: str, out: str) -> None:
     """Place each (ticket_id, route_id) of `assign` on its route.
 
-    outcome: unmatched_stop (a name not found on the route), same_stop (both names are the same
-    stop), forward (a pair orig < dest; the shortest wins), ring_wrap (rings only: dest before orig,
-    so dest_seq = seq + N - 1 on the second lap) or reversed. A stop holding several positions on
-    the route can be any of them.
+    outcome: unmatched_stop (a name not found on the route), ambiguous_stop (a name tied between
+    positions), same_stop (both names are the same stop), forward (a pair orig < dest; the shortest
+    wins), ring_wrap (rings only: dest before orig, so dest_seq = seq + N - 1 on the second lap) or
+    reversed. A stop holding several positions on the route can be any of them.
     """
     con.execute(f"""
         CREATE OR REPLACE TEMP TABLE {out} AS
         WITH a AS (
-            SELECT a.ticket_id, a.route_id, t.start_raw, t.end_raw, m.n_stops, m.is_ring
-            FROM {assign} a JOIN _tix t USING (ticket_id) JOIN route_meta m USING (route_id)),
+            SELECT a.ticket_id, a.route_id, t.start_raw, t.end_raw, m.n_stops, m.is_ring,
+                   so.status AS o_status, sd.status AS d_status
+            FROM {assign} a JOIN _tix t USING (ticket_id) JOIN route_meta m USING (route_id)
+            LEFT JOIN _stop_status so ON so.route_id = a.route_id AND so.name = t.start_raw
+            LEFT JOIN _stop_status sd ON sd.route_id = a.route_id AND sd.name = t.end_raw),
         p AS (
             SELECT a.ticket_id, o.key AS okey, d.key AS dkey, o.seq AS o, d.seq AS d
             FROM a JOIN _stop_match o ON o.route_id = a.route_id AND o.name = a.start_raw
@@ -333,7 +403,9 @@ def _place(con, assign: str, out: str) -> None:
                    arg_min(d, (d - o) * 100000 + o) FILTER (WHERE o > d) AS bd
             FROM p GROUP BY ticket_id)
         SELECT a.ticket_id, a.route_id,
-               CASE WHEN g.ticket_id IS NULL THEN 'unmatched_stop'
+               CASE WHEN a.o_status IS NULL OR a.d_status IS NULL THEN 'unmatched_stop'
+                    WHEN a.o_status = 'ambiguous' OR a.d_status = 'ambiguous' THEN 'ambiguous_stop'
+                    WHEN g.ticket_id IS NULL THEN 'unmatched_stop'
                     WHEN g.same_key THEN 'same_stop'
                     WHEN g.fo IS NOT NULL THEN 'forward'
                     WHEN g.bo IS NOT NULL AND a.is_ring THEN 'ring_wrap'
@@ -346,10 +418,12 @@ def _place(con, assign: str, out: str) -> None:
 
 
 def _assign_from_map(con, route_map: dict) -> None:
-    rows = [(raw, m["route_id"]) for raw, m in route_map.items() if raw is not None and m["route_id"] is not None]
-    _load_arrow(con, "_rm", {"route_raw": pa.string(), "route_id": pa.int64()}, rows, temp=True)
+    rows = [(raw, m["route_id"], m["match_type"] == "remap") for raw, m in route_map.items()
+            if raw is not None and m["route_id"] is not None]
+    _load_arrow(con, "_rm", {"route_raw": pa.string(), "route_id": pa.int64(), "swapped": pa.bool_()}, rows,
+                temp=True)
     con.execute("CREATE OR REPLACE TEMP TABLE _assign AS "
-                "SELECT t.ticket_id, m.route_id FROM _tix t JOIN _rm m USING (route_raw)")
+                "SELECT t.ticket_id, m.route_id, m.swapped FROM _tix t JOIN _rm m USING (route_raw)")
 
 
 # ---------------------------------------------------------------- route strings
@@ -378,15 +452,19 @@ def _ev(d: dict) -> str:
     return json.dumps(d, sort_keys=True, separators=(",", ":"))
 
 
-def _alias_decisions(con, routes: Routes, matches: _StopMatches, strings: list) -> dict:
-    """Aliases for strings with no exact short name: candidates share alias_key; one stands when at
-    least ALIAS_MIN_IN_ORDER of the string's tickets resolve in stop order on it (§5.3)."""
-    cands = []
-    keys = {}
+def _alias_decisions(con, routes: Routes, matches: _StopMatches, strings: list, rule: str,
+                     skip: dict | None = None) -> dict:
+    """Aliases for strings with no exact short name (§5.3). Candidates share the string's alias_key
+    (rule 'alias_key') or variant_key (rule 'variant_tokens', R16), minus the route_ids in skip[raw];
+    one stands when at least ALIAS_MIN_IN_ORDER of the string's tickets resolve in stop order on it.
+    Returns raw -> (route_id or None, evidence)."""
+    key_fn, by_key = (alias_key, routes.by_alias) if rule == "alias_key" else (variant_key, routes.by_variant)
+    skip = skip or {}
+    keys, cand_ids, cands = {}, {}, []
     for raw in strings:
-        k = alias_key(raw) if raw is not None else ""
-        keys[raw] = k
-        cands += [(raw, rid) for rid in routes.by_alias.get(k, [])] if k else []
+        keys[raw] = key_fn(raw) if raw is not None else ""
+        cand_ids[raw] = [rid for rid in by_key.get(keys[raw], []) if rid not in skip.get(raw, ())] if keys[raw] else []
+        cands += [(raw, rid) for rid in cand_ids[raw]]
     decisions = {}
     in_order = {}
     if cands:
@@ -401,12 +479,12 @@ def _alias_decisions(con, routes: Routes, matches: _StopMatches, strings: list) 
             in_order[(raw, rid)] = (n, ok)
     for raw in strings:
         tried = []
-        for rid in routes.by_alias.get(keys[raw], []) if keys[raw] else []:
+        for rid in cand_ids[raw]:
             n, ok = in_order.get((raw, rid), (0, 0))
             tried.append({"route_id": rid, "short_name": routes.meta[rid]["short_name"], "tickets": n,
                           "in_order": ok, "share": round(ok / n, 4) if n else 0.0})
         tried.sort(key=lambda c: (-c["share"], -c["in_order"], c["route_id"]))
-        ev = {"rule": "alias_key", "alias_key": keys[raw], "threshold": ALIAS_MIN_IN_ORDER, "candidates": tried}
+        ev = {"rule": rule, "key": keys[raw], "threshold": ALIAS_MIN_IN_ORDER, "candidates": tried}
         passing = [c for c in tried if c["share"] >= ALIAS_MIN_IN_ORDER]
         chosen = None
         if passing:
@@ -475,10 +553,14 @@ def _write_outputs(con, route_map: dict) -> None:
         "evidence": pa.string()},
         [(raw, m["route_id"], m["short_name"], m["operator"], m["direction"], m["is_ring"], m["is_devi"],
           m["match_type"], _ev(m["evidence"])) for raw, m in sorted(route_map.items(), key=lambda kv: kv[0] or "")])
+    # A ticket that runs forward on the opposite route (_placed_opp) is 'remapped' there; this covers
+    # reversed tickets and, on strings swapped onto a ring, wraps (see run()).
     con.execute("""
         CREATE OR REPLACE TABLE tickets_resolved AS
         WITH f AS (
-            SELECT ticket_id, route_id, orig_seq, dest_seq, outcome AS how FROM _placed WHERE outcome IN ('forward', 'ring_wrap')
+            SELECT p.ticket_id, p.route_id, p.orig_seq, p.dest_seq, p.outcome AS how
+            FROM _placed p LEFT JOIN _placed_opp q ON q.ticket_id = p.ticket_id AND q.outcome = 'forward'
+            WHERE p.outcome IN ('forward', 'ring_wrap') AND q.ticket_id IS NULL
             UNION ALL
             SELECT ticket_id, route_id, orig_seq, dest_seq, 'remapped' FROM _placed_opp WHERE outcome = 'forward')
         SELECT f.ticket_id, f.route_id, f.orig_seq::INT AS orig_seq, f.dest_seq::INT AS dest_seq, c.pax, c.vehicle,
@@ -489,15 +571,15 @@ def _write_outputs(con, route_map: dict) -> None:
         SELECT t.ticket_id, t.route_raw,
                CASE WHEN p.ticket_id IS NULL THEN 'unmatched_route' ELSE p.outcome END AS reason
         FROM _tix t LEFT JOIN _placed p USING (ticket_id) LEFT JOIN _placed_opp q USING (ticket_id)
-        WHERE p.ticket_id IS NULL OR p.outcome IN ('unmatched_stop', 'same_stop')
+        WHERE p.ticket_id IS NULL OR p.outcome IN ('unmatched_stop', 'ambiguous_stop', 'same_stop')
            OR (p.outcome = 'reversed' AND (q.outcome IS NULL OR q.outcome <> 'forward'))
         ORDER BY t.ticket_id""")
     con.execute("""
         CREATE OR REPLACE TABLE dq_resolve AS
         SELECT r.reason, count(j.ticket_id)::BIGINT AS tickets, coalesce(sum(t.pax), 0)::BIGINT AS pax
-        FROM (SELECT unnest(?) AS reason, unnest(range(4)) AS i) r
+        FROM (SELECT unnest(?) AS reason, unnest(range(?)) AS i) r
         LEFT JOIN tickets_rejected j ON j.reason = r.reason LEFT JOIN _tix t ON t.ticket_id = j.ticket_id
-        GROUP BY r.reason, r.i ORDER BY r.i""", [list(REJECT_REASONS)])
+        GROUP BY r.reason, r.i ORDER BY r.i""", [list(REJECT_REASONS), len(REJECT_REASONS)])
 
 
 def check_conservation(con, sample_routes: list[str] | None = None) -> None:
@@ -539,11 +621,18 @@ def _stats(con, route_map: dict, swapped: int) -> ResolveStats:
     types = defaultdict(int)
     for m in route_map.values():
         types[m["match_type"]] += 1
+    variant = [raw for raw, m in route_map.items()
+               if m["match_type"] == "alias" and m["evidence"]["rule"] == "variant_tokens"]
+    variant_pax = con.execute("""
+        SELECT coalesce(sum(r.pax), 0) FROM tickets_resolved r JOIN _tix t USING (ticket_id)
+        WHERE t.route_raw IN (SELECT unnest(?))""", [variant]).fetchone()[0]
+    rings = con.execute("SELECT count(*) FILTER (WHERE is_ring) FROM route_meta").fetchone()[0]
     return ResolveStats(
         tickets=tickets, pax=int(pax), resolved_tickets=res_t, resolved_pax=int(res_p),
         match_rate=res_p / pax if pax else 0.0, forward=how.get("forward", (0, 0))[0],
         remapped=how.get("remapped", (0, 0))[0], ring_wrap=how.get("ring_wrap", (0, 0))[0],
-        aliases=types["alias"], routes_remapped=swapped,
+        aliases=types["alias"], routes_remapped=swapped, variant_aliases=len(variant),
+        variant_alias_pax=int(variant_pax), rings=rings,
         routes={k: types[k] for k in ("exact", "alias", "remap", "unmatched")}, rejected=rejected)
 
 
@@ -551,9 +640,11 @@ def _report(con, stats: ResolveStats, matches: _StopMatches) -> None:
     r = stats.routes
     print(f"resolve: {sum(r.values()):,} route strings: exact {r['exact']:,}, alias {r['alias']:,}, "
           f"remap {r['remap']:,}, unmatched {r['unmatched']:,}")
+    print(f"resolve: variant-token aliases {stats.variant_aliases:,} route strings, "
+          f"{stats.variant_alias_pax:,} passengers resolved on them; {stats.rings:,} GTFS routes are rings")
     c = matches.counts
     print(f"resolve: {sum(c.values()):,} (route, stop name) pairs matched: exact {c['exact']:,}, "
-          f"fuzzy {c['fuzzy']:,}, unmatched {c['unmatched']:,}")
+          f"fuzzy {c['fuzzy']:,}, ambiguous {c['ambiguous']:,}, unmatched {c['unmatched']:,}")
     print(f"resolve: resolved {stats.resolved_tickets:,} of {stats.tickets:,} tickets; "
           f"{stats.resolved_pax:,} of {stats.pax:,} passengers = {stats.match_rate:.2%} passenger match rate")
     print(f"resolve: how forward {stats.forward:,}, remapped {stats.remapped:,}, ring_wrap {stats.ring_wrap:,}")
@@ -576,8 +667,19 @@ def run(con, paths, sample_routes: list[str] | None = None) -> ResolveStats:
             route_map[raw] = _route_row(raw, rid, routes, "exact", {"rule": "exact"})
         else:
             no_exact.append(raw)
-    for raw, (rid, ev) in _alias_decisions(con, routes, matches, no_exact).items():
-        route_map[raw] = _route_row(raw, rid, routes, "alias" if rid is not None else "unmatched", ev)
+    # Aliases: alias_key first; strings it leaves unmatched then try variant_key (R16).
+    first = _alias_decisions(con, routes, matches, no_exact, "alias_key")
+    left = [raw for raw, (rid, _) in first.items() if rid is None]
+    tried = {raw: {c["route_id"] for c in first[raw][1]["candidates"]} for raw in left}
+    second = _alias_decisions(con, routes, matches, left, "variant_tokens", skip=tried)
+    for raw, (rid, ev) in first.items():
+        if rid is not None:
+            route_map[raw] = _route_row(raw, rid, routes, "alias", ev)
+        elif second[raw][0] is not None:
+            route_map[raw] = _route_row(raw, second[raw][0], routes, "alias", {**second[raw][1], "alias_key_step": ev})
+        else:
+            route_map[raw] = _route_row(raw, None, routes, "unmatched",
+                                        {"rule": "unmatched", "alias_key_step": ev, "variant_step": second[raw][1]})
 
     _assign_from_map(con, route_map)
     matches.ensure("_assign")
@@ -588,12 +690,15 @@ def run(con, paths, sample_routes: list[str] | None = None) -> ResolveStats:
         matches.ensure("_assign")
         _place(con, "_assign", "_placed")
 
-    # Minority rule: a reversed ticket stays if it runs forward on the opposite route.
+    # Minority rule: a reversed ticket stays if it runs forward on the opposite route. On a string
+    # swapped onto a ring nothing comes out reversed, so its wraps get the same chance: a ticket that
+    # runs forward on the route its label named is not sent the wrong way round the ring.
     con.execute("""
         CREATE OR REPLACE TEMP TABLE _assign_opp AS
         SELECT p.ticket_id, m.opposite_route_id AS route_id
-        FROM _placed p JOIN route_meta m USING (route_id)
-        WHERE p.outcome = 'reversed' AND m.opposite_route_id IS NOT NULL""")
+        FROM _placed p JOIN _assign s USING (ticket_id) JOIN route_meta m ON m.route_id = p.route_id
+        WHERE m.opposite_route_id IS NOT NULL
+          AND (p.outcome = 'reversed' OR (p.outcome = 'ring_wrap' AND s.swapped))""")
     matches.ensure("_assign_opp")
     _place(con, "_assign_opp", "_placed_opp")
 
@@ -601,7 +706,7 @@ def run(con, paths, sample_routes: list[str] | None = None) -> ResolveStats:
     check_conservation(con, sample_routes)
     stats = _stats(con, route_map, swapped)
     _report(con, stats, matches)
-    for t in ("_tix", "_stop_match", "_rm", "_assign", "_placed", "_assign_opp", "_placed_opp", "_alias_cand",
-              "_assign_alias", "_placed_alias", "_gtfs_routes"):
+    for t in ("_tix", "_stop_match", "_stop_status", "_rm", "_assign", "_placed", "_assign_opp", "_placed_opp",
+              "_alias_cand", "_assign_alias", "_placed_alias", "_gtfs_routes"):
         con.execute(f"DROP TABLE IF EXISTS {t}")
     return stats

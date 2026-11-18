@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+from rapidfuzz import fuzz
 
 from src.pipeline import clean, resolve
 from src.pipeline.errors import GateError
@@ -33,10 +34,14 @@ def rejected(con):
     return con.execute("SELECT route_raw, reason FROM tickets_rejected ORDER BY ticket_id").fetchall()
 
 
-def toy_with_routes(tmp_path, toy_gtfs_dir, extra):
-    """Copy the toy feed and add routes: extra = [(route_id, short_name, [stop_ids])], one trip each."""
+def toy_with_routes(tmp_path, toy_gtfs_dir, extra, stops=()):
+    """Copy the toy feed and add stops [(stop_id, name, lat, lon)] and routes
+    [(route_id, short_name, [stop_ids])], one trip each."""
     d = tmp_path / "gtfs"
     shutil.copytree(toy_gtfs_dir, d)
+    with open(d / "stops.txt", "a") as f:
+        for sid, name, lat, lon in stops:
+            f.write(f"{sid},{name},{lat},{lon}\n")
     with open(d / "routes.txt", "a") as r, open(d / "trips.txt", "a") as t, \
             open(d / "stop_times.txt", "a") as st:
         for rid, short, stops in extra:
@@ -139,7 +144,7 @@ def test_alias_needs_overlap(con, tmp_path, toy_gtfs_dir):
     ev = json.loads(rm["ML96UP"][3])
     assert ev["candidates"][0]["short_name"] == "ML-96UP" and ev["candidates"][0]["share"] == pytest.approx(0.8)
     assert rm["ML97UP"][:3] == (None, None, "unmatched")
-    assert json.loads(rm["ML97UP"][3])["candidates"][0]["share"] == pytest.approx(0.7)
+    assert json.loads(rm["ML97UP"][3])["alias_key_step"]["candidates"][0]["share"] == pytest.approx(0.7)
     assert placed(con) == [(801, 1, 4, "forward")] * 8
     assert rejected(con) == [("ML96UP", "reversed")] * 2 + [("ML97UP", "unmatched_route")] * 10
     assert stats.aliases == 1
@@ -174,10 +179,11 @@ def test_rejection_reasons_and_dq(con, tmp_path, toy_gtfs_dir):
                              ("101UP", "same_stop")]
     dq = {r[0]: r[1:] for r in con.execute("SELECT reason, tickets, pax FROM dq_resolve").fetchall()}
     assert dq["unmatched_route"] == (1, 1) and dq["unmatched_stop"] == (1, 1)
-    assert dq["same_stop"] == (1, 1) and dq["reversed"] == (0, 0)
+    assert dq["same_stop"] == (1, 1) and dq["reversed"] == (0, 0) and dq["ambiguous_stop"] == (0, 0)
     assert stats.tickets == 4 and stats.pax == 5 and stats.resolved_pax == 2
     assert stats.match_rate == pytest.approx(0.4)
-    assert stats.rejected == {"unmatched_route": 1, "unmatched_stop": 1, "same_stop": 1, "reversed": 0}
+    assert stats.rejected == {"unmatched_route": 1, "unmatched_stop": 1, "ambiguous_stop": 0, "same_stop": 1,
+                              "reversed": 0}
     assert con.execute("SELECT match_type FROM route_map WHERE route_raw = 'NOPE99UP'").fetchone() == ("unmatched",)
 
 
@@ -229,3 +235,88 @@ def test_route_scoped_matcher():
     assert method == "fuzzy" and score >= 78 and idx.keys[key] == (3,)
     assert idx.keys[resolve.match_stop("Bravo Bazar", idx)[0]] == (2,)   # slash token
     assert resolve.match_stop("Zzyzx Qwv", idx) is None
+
+
+# ---- R14: WRatio ties break by token_sort_ratio, then partial_ratio; a remaining tie is ambiguous
+
+def test_tie_break_prefers_shared_words(con, tmp_path, toy_gtfs_dir):
+    # WRatio gives both stops exactly 85.5 for "Isbt Anand Vihar": one shared word is enough once the
+    # lengths differ by 1.5x. token_sort_ratio picks the stop that really is Anand Vihar ISBT.
+    q = "isbt anand vihar"
+    assert fuzz.WRatio(q, "c block yamuna vihar / c4 yamuna vihar") == fuzz.WRatio(q, "anand vihar isbt main road")
+    gtfs = toy_with_routes(tmp_path, toy_gtfs_dir, [(811, "AV-1UP", [1, 10, 11, 4])],
+                           stops=[(10, "C-Block Yamuna Vihar / C4 YAMUNA VIHAR", 28.6200, 77.2000),
+                                  (11, "Anand Vihar ISBT Main Road", 28.6300, 77.2000)])
+    run_resolve(con, tmp_path, gtfs, [ticket("AV-1UP", "Isbt Anand Vihar", "Delta Metro"),
+                                      ticket("AV-1UP", "Alpha Terminal", "Isbt Anand Vihar", 1)])
+    assert placed(con) == [(811, 3, 4, "forward"), (811, 1, 3, "forward")]
+
+
+def test_ambiguous_stop_rejected(con, tmp_path, toy_gtfs_dir):
+    idx = resolve.build_stop_index([(1, "Alpha Vihar"), (2, "Bravo Vihar")])
+    m = resolve.match_stop("Vihar", idx)
+    assert m.method == "ambiguous" and m.key is None
+    gtfs = toy_with_routes(tmp_path, toy_gtfs_dir, [(812, "VH-1UP", [12, 13, 4])],
+                           stops=[(12, "Alpha Vihar", 28.6200, 77.2100), (13, "Bravo Vihar", 28.6300, 77.2100)])
+    run_resolve(con, tmp_path, gtfs, [ticket("VH-1UP", "Vihar", "Delta Metro"),
+                                      ticket("VH-1UP", "Alpha Vihar", "Delta Metro", 1)])
+    assert rejected(con) == [("VH-1UP", "ambiguous_stop")]
+    assert placed(con) == [(812, 1, 3, "forward")]
+    assert con.execute("SELECT tickets, pax FROM dq_resolve WHERE reason = 'ambiguous_stop'").fetchone() == (1, 1)
+
+
+# ---- R15: a route is a ring when its first and last stops are the same stop or within PLACE_RADIUS_M
+
+def test_near_closed_loop_wraps(con, tmp_path, toy_gtfs_dir):
+    # LOOP-1UP ends at Bravo Gate, a different stop about 100 m from its first stop Bravo Market: a ring,
+    # so Foxtrot -> Charlie wraps. LOOP-2UP ends about 600 m away: not a ring, so the same ticket is reversed.
+    gtfs = toy_with_routes(tmp_path, toy_gtfs_dir, [(821, "LOOP-1UP", [2, 3, 6, 14]), (822, "LOOP-2UP", [2, 3, 6, 15])],
+                           stops=[(14, "Bravo Gate", 28.61439, 77.2000), (15, "Golf Links", 28.61889, 77.2000)])
+    run_resolve(con, tmp_path, gtfs, [ticket("LOOP-1UP", "Foxtrot Nagar", "Charlie Chowk"),
+                                      ticket("LOOP-2UP", "Foxtrot Nagar", "Charlie Chowk", 1)])
+    assert placed(con) == [(821, 3, 5, "ring_wrap")]
+    assert rejected(con) == [("LOOP-2UP", "reversed")]
+    ring = dict(con.execute("SELECT route_id, is_ring FROM route_meta").fetchall())
+    assert ring[821] is True and ring[822] is False and ring[401] is True and ring[101] is False
+
+
+def test_swap_onto_ring_keeps_forward_minority(con, tmp_path, toy_gtfs_dir):
+    # OMS(-)DOWN (added; Bravo, Foxtrot, Charlie, Echo; not a ring): 4 of 5 tickets reversed, so the string
+    # swaps to its opposite, the OMS(+)UP ring. The fifth ticket runs forward on OMS(-)DOWN and stays there
+    # as remapped instead of wrapping the wrong way round the ring.
+    gtfs = toy_with_routes(tmp_path, toy_gtfs_dir, [(402, "OMS(-)DOWN", [2, 6, 3, 5])])
+    rows = [ticket("OMS(-)DOWN", "Charlie Chowk", "Foxtrot Nagar", i) for i in range(4)]
+    rows.append(ticket("OMS(-)DOWN", "Foxtrot Nagar", "Charlie Chowk", 9))
+    run_resolve(con, tmp_path, gtfs, rows)
+    assert con.execute("SELECT route_id, match_type FROM route_map").fetchall() == [(401, "remap")]
+    assert placed(con) == [(401, 2, 3, "forward")] * 4 + [(402, 2, 3, "remapped")]
+
+
+# ---- R16: aliases by removing variant tokens (STL, EXT, EXP, SPL) when alias_key finds nothing
+
+def test_variant_key():
+    vk = resolve.variant_key
+    assert vk("101STLUP") == vk("101UP") and vk("588LSTLDOWN") == vk("588DOWN")
+    assert vk("118EXTNDOWN") == vk("118EXTDOWN") == vk("118DOWN") and vk("BPEXPUP") == vk("BPUP")
+    assert vk("529SPLDOWN") == vk("529DOWN") and vk("567BSTLUP") != vk("567BSTLDOWN")
+
+
+def test_variant_token_alias(con, tmp_path, toy_gtfs_dir):
+    # 101STLUP: no exact name, no alias_key match; without STL it keys to 101UP and its tickets run in
+    # order there. 202STLUP keys to 202UP, but its tickets' stops are not on that route: unmatched.
+    stats = run_resolve(con, tmp_path, toy_gtfs_dir, [
+        ticket("101STLUP", "Alpha Terminal", "Delta Metro"),
+        ticket("101STLUP", "Bravo Market", "Charlie Chowk", 1, passenger_count=2),
+        ticket("202STLUP", "Alpha Terminal", "Delta Metro", 2),
+    ])
+    rm = {r[0]: r[1:] for r in con.execute(
+        "SELECT route_raw, route_id, short_name, match_type, evidence FROM route_map").fetchall()}
+    assert rm["101STLUP"][:3] == (101, "101UP", "alias")
+    ev = json.loads(rm["101STLUP"][3])
+    assert ev["rule"] == "variant_tokens" and ev["candidates"][0]["short_name"] == "101UP"
+    assert ev["candidates"][0]["share"] == 1.0 and ev["alias_key_step"]["candidates"] == []
+    assert rm["202STLUP"][:3] == (None, None, "unmatched")
+    assert json.loads(rm["202STLUP"][3])["variant_step"]["candidates"][0]["share"] == 0.0
+    assert placed(con) == [(101, 1, 4, "forward"), (101, 2, 3, "forward")]
+    assert rejected(con) == [("202STLUP", "unmatched_route")]
+    assert stats.variant_aliases == 1 and stats.variant_alias_pax == 3
