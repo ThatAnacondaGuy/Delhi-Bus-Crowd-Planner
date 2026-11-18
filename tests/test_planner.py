@@ -368,3 +368,47 @@ def test_after_midnight_buses_are_found_not_called_no_service(tmp_path, toy_gtfs
         assert res["options"], dep
         assert not any("No scheduled service" in n for n in res["notes"])
         assert all(o["timetable_uncertain"] for o in res["options"])
+
+
+def _with_route_501_trips(tmp_path, toy_gtfs_dir, con, starts):
+    """Toy network where route 501 (909UP, Delta -> Echo, 5 min) runs only at the given seq-1 start minutes."""
+    paths = build_export(tmp_path, toy_gtfs_dir, con, STANDING_101)
+    f = paths.planner_dir / "passings.parquet"
+    df = pd.read_parquet(f)
+    df = df[df["route_id"] != 501]
+    extra = pd.DataFrame([dict(route_id=501, seq=s, minute=m + (s - 1) * 5) for m in starts for s in (1, 2)])
+    pd.concat([df, extra]).astype({"route_id": "int64", "seq": "int32", "minute": "int32"}).to_parquet(f, index=False)
+    return Planner.load(paths)
+
+
+def _fastest_route(p):
+    res = p.plan("Delta Metro", "Echo Depot", "08:00", "weekday")
+    return [l["route"] for l in bus_legs(by_role(res, "fastest"))]
+
+
+def test_timetable_only_routes_are_not_planned(tmp_path, toy_gtfs_dir, con):
+    """R29: 1 or 2 scheduled trips a day is timetable-only; its certain short wait must not win 'fastest'."""
+    for starts in ([485], [485, 1085]):
+        p = _with_route_501_trips(tmp_path / f"t{len(starts)}", toy_gtfs_dir, con, starts)
+        assert "909UP" not in p.routes_for_day("weekday")
+        assert "909UP" not in p.routes_for_day("weekend")
+        assert _fastest_route(p) == ["101UP"]
+
+
+def test_same_route_with_three_trips_a_day_is_planned(tmp_path, toy_gtfs_dir, con):
+    p = _with_route_501_trips(tmp_path, toy_gtfs_dir, con, [485, 785, 1085])
+    assert "909UP" in p.routes_for_day("weekday")
+    assert _fastest_route(p) == ["909UP"]
+
+
+def test_daily_trips_counted_per_route_not_per_hour(tmp_path, toy_gtfs_dir, con):
+    """Three trips spread over three different hours still count as three, and a full toy route is untouched."""
+    p = _with_route_501_trips(tmp_path, toy_gtfs_dir, con, [485, 600, 1085])
+    ri = p.route_ri[501]
+    assert p.r_trips[ri] == 3
+    assert p.r_trips[p.route_ri[101]] >= 3
+
+
+def test_min_daily_trips_constant_lives_in_config():
+    from src.pipeline import config
+    assert config.MIN_DAILY_TRIPS == 3 and pl.MIN_DAILY_TRIPS == config.MIN_DAILY_TRIPS

@@ -107,6 +107,9 @@ GPS_STOPTIME_RHO_MIN = 0.3
 LESS_CROWDED_SLACK = (15, 0.30)
 LEAVE_LATER_SHIFTS = (10, 20, 30, 40)
 HEADLINE_MIN_MINUTES = 5
+# R29: the planner only uses routes with at least this many scheduled trips a day; below it the half-headway wait
+# model is undefined and the route is timetable-only (GPS often contradicts a lone trip's clock)
+MIN_DAILY_TRIPS = 3
 NIGHT_START_H = 23
 NIGHT_END_H = 5
 

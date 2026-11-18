@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.pipeline.config import BUS_SPECS, PLACE_RADIUS_M, WINDOWS
+from src.pipeline.config import BUS_SPECS, MIN_DAILY_TRIPS, PLACE_RADIUS_M, WINDOWS
 from src.pipeline.loads import _level_v, evidence as _evidence, level as _level
 from src.pipeline.network import Clock
 
@@ -263,6 +263,9 @@ class Planner:
         np.minimum.at(first, rows, minute)
         np.maximum.at(last, rows, minute)
         self.cnt, self.first, self.last = cnt.tolist(), first.tolist(), last.tolist()
+        # R29: scheduled trips a day = the most passings any stop of the route sees (a short-turn trip skips stops)
+        per_row = np.bincount(rows, minlength=self.n_rows)
+        self.r_trips = np.maximum.reduceat(per_row, np.asarray(self.r_row0)).tolist()
         cls = dict(zip(classes["route_id"], classes["class"])) if classes is not None else {}
         self.r_class = [cls.get(rid, "regular") for rid in self.route_ids]
         self.stop_routes = {}
@@ -422,10 +425,12 @@ class Planner:
 
     def _allowed(self, ri: int, day: str) -> bool:
         cls = self.r_class[ri]
-        return cls not in ("school", "daf") and (cls != "office_special" or day == "weekday")
+        return (cls not in ("school", "daf") and (cls != "office_special" or day == "weekday")
+                and self.r_trips[ri] >= MIN_DAILY_TRIPS)
 
     def routes_for_day(self, day: str) -> set[str]:
-        """Short names of the routes the planner may use on that day type (school, DAF and weekend specials out)."""
+        """Short names of the routes the planner may use on that day type (school, DAF, weekend specials and
+        timetable-only routes with fewer than MIN_DAILY_TRIPS trips a day out)."""
         return {self.r_short[ri] for ri in range(self.n_routes) if self._allowed(ri, day)}
 
     # -------------------------------------------------------------- places
