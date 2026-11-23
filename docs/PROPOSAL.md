@@ -26,6 +26,8 @@ Delhi riders choose buses by travel time alone, because no journey planner knows
 - **Crowding tables** for every route, direction, stretch and half hour, weekday and weekend, with an evidence state on every cell: *Based on many tickets*, *Rough guess* or *No data*. 3,384,288 rows, rebuilt by one command.
 - **Honest by design.** No value is invented; a stretch without evidence is *No data*, never shown as comfortable; every number in our documents is read from the pipeline's own output.
 
+<div class="keep">
+
 ## How it works
 
 <div class="diagram">
@@ -38,6 +40,10 @@ Delhi riders choose buses by travel time alone, because no journey planner knows
 </div>
 
 Each ticket says where a rider boarded and got off. We spread it over the stretches travelled, at the time the bus was there, add up everyone per stretch and half hour, scale the app tickets up to all riders, divide by the buses that really ran (from GPS) and compare people on board with the bus's seats and rated total. Seats, rated total and crush load are set by bus type: 12 m AC 35/63/100, 9 m DEVI 23/36/42.
+
+</div>
+
+<div class="keep">
 
 ## Evidence, with the misses
 
@@ -56,10 +62,12 @@ Each ticket says where a rider boarded and got off. We spread it over the stretc
 | Morning and evening peaks | **Hit**: busiest hours 09:00 and 19:00 |
 | Weekends lower, flatter, later peak | **Hit** on all three |
 | Inbound busier in the morning, outbound in the evening | **Hit**: 80% and 78% of 359 route pairs |
-| Published DTC bus-km | **Hit**: within the band, and GPS independently agrees on how much service ran |
+| Published DTC bus-km | **Hit**: within the band once GPS measured the trips that ran (the timetable alone was 2.29 times the published figure); GPS and the published figure are independent |
 | Published fleet load factor (0.78–0.89) | **Miss**: 0.54. Published ridership, GPS trips and bus capacity do not fit together, so on capped routes crowding shown is a lower estimate |
 | Ten researched busy corridors | 10 of 10 by our rule, but chance alone gives 10.0, so we also report: 19% of corridor stretches are in the top decile (chance 10%); 7 of 10 hit with both ends on the corridor |
 | Week to week, two different weeks | 76% unchanged; a held-out week lands in our range in 63% of cells |
+
+</div>
 
 ## Limits, stated plainly
 
@@ -84,4 +92,4 @@ An on-bus count on a few corridors to replace our one unverifiable step, the sca
 
 </div>
 
-<p class="credit">Data: Transport Stack / IIIT Delhi; ticketing from ONDC e-ticketing. Aggregates only: no ticket-level or vehicle-level data is published. Figures rendered from run 20261123-1927-10faec86, code 43fe4e2, 2026-11-23.</p>
+<p class="credit">Data: Transport Stack / IIIT Delhi; ticketing from ONDC e-ticketing. Aggregates only: no ticket-level or vehicle-level data is published. Figures rendered from run 20261123-1952-f9fb356b, code 7ad173f, 2026-11-23.</p>

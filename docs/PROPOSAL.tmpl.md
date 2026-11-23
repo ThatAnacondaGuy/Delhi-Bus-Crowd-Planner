@@ -26,6 +26,8 @@ Delhi riders choose buses by travel time alone, because no journey planner knows
 - **Crowding tables** for every route, direction, stretch and half hour, weekday and weekend, with an evidence state on every cell: *Based on many tickets*, *Rough guess* or *No data*. {{stretch_crowding_rows:,}} rows, rebuilt by one command.
 - **Honest by design.** No value is invented; a stretch without evidence is *No data*, never shown as comfortable; every number in our documents is read from the pipeline's own output.
 
+<div class="keep">
+
 ## How it works
 
 <div class="diagram">
@@ -38,6 +40,10 @@ Delhi riders choose buses by travel time alone, because no journey planner knows
 </div>
 
 Each ticket says where a rider boarded and got off. We spread it over the stretches travelled, at the time the bus was there, add up everyone per stretch and half hour, scale the app tickets up to all riders, divide by the buses that really ran (from GPS) and compare people on board with the bus's seats and rated total. Seats, rated total and crush load are set by bus type: 12 m AC {{seats_12m_ac}}/{{rated_12m_ac}}/{{crush_12m_ac}}, 9 m DEVI {{seats_9m_devi}}/{{rated_9m_devi}}/{{crush_9m_devi}}.
+
+</div>
+
+<div class="keep">
 
 ## Evidence, with the misses
 
@@ -56,10 +62,12 @@ Each ticket says where a rider boarded and got off. We spread it over the stretc
 | Morning and evening peaks | **Hit**: busiest hours {{am_peak_hour:02d}}:00 and {{pm_peak_hour:02d}}:00 |
 | Weekends lower, flatter, later peak | **Hit** on all three |
 | Inbound busier in the morning, outbound in the evening | **Hit**: {{radial_am_share:.0%}} and {{radial_pm_share:.0%}} of {{radial_pairs}} route pairs |
-| Published DTC bus-km | **Hit**: within the band, and GPS independently agrees on how much service ran |
+| Published DTC bus-km | **Hit**: within the band once GPS measured the trips that ran (the timetable alone was {{dtc_bus_km_scheduled_ratio:.2f}} times the published figure); GPS and the published figure are independent |
 | Published fleet load factor ({{load_factor_band_low:.2f}}–{{load_factor_band_high:.2f}}) | **Miss**: {{load_factor_model:.2f}}. Published ridership, GPS trips and bus capacity do not fit together, so on capped routes crowding shown is a lower estimate |
 | Ten researched busy corridors | {{corridor_hits_total}} of {{corridors_total}} by our rule, but chance alone gives {{corridor_hits_chance_expected:.1f}}, so we also report: {{corridor_top_decile_share_mean:.0%}} of corridor stretches are in the top decile (chance {{corridor_top_decile_chance:.0%}}); {{corridor_hits_both_ends}} of {{corridors_total}} hit with both ends on the corridor |
 | Week to week, two different weeks | {{unchanged_level_share:.0%}} unchanged; a held-out week lands in our range in {{range_coverage_heldout:.0%}} of cells |
+
+</div>
 
 ## Limits, stated plainly
 

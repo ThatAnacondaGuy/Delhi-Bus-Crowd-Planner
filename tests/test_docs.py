@@ -317,3 +317,35 @@ def test_quoted_hindi_and_app_words_match_the_app():
     text = VIDEO.read_text(encoding="utf-8")
     for hindi in ("आमतौर पर सीट मिल जाती है", "आमतौर पर खड़े होकर जाना पड़ता है", "आमतौर पर भारी भीड़", "जानकारी नहीं", "अंदाज़ा (कम टिकट)"):
         assert hindi in js and hindi in text, hindi
+
+
+# ---------------------------------------------------------------- honesty and layout fixes (fix round 1)
+
+def test_note_says_bus_km_was_a_miss_before_gps_trips_that_ran():
+    h = report()["headline_numbers"]
+    assert abs(h["dtc_bus_km_scheduled_ratio"] - h["dtc_bus_km_scheduled"] / h["dtc_bus_km_published"]) < 1e-9
+    text = NOTE.read_text(encoding="utf-8")
+    assert f"{h['dtc_bus_km_scheduled_ratio']:.2f} times the" in text and "the same check was a miss" in text
+    assert "once GPS measured the trips that ran" in README.read_text(encoding="utf-8")
+
+
+def test_censored_terminal_ratio_and_run_rule_wording():
+    h = report()["headline_numbers"]
+    text = NOTE.read_text(encoding="utf-8")
+    assert h["terminal_ratio_p90"] == 2.0                                   # the clamp: the tail is not visible
+    assert f"sits at the {h['terminal_ratio_p90']:.1f} cap" in text and "times or more" not in text.split("Alighting correction")[1][:700]
+    assert "fixed before we compared bus-km" in text and "independent check that corroborates it" in text
+
+
+def test_readme_leads_with_the_mandi_house_screenshot_and_makes_no_unsourced_claim():
+    text = README.read_text(encoding="utf-8")
+    assert text.index("app-commuter-leave-later-mandi-house.png") < text.index("app-commuter-cp-to-anand-vihar.png")
+    assert "twenty minutes later usually means a seat" not in text
+    assert "leaving at 18:20 is usually standing" in text
+
+
+def test_proposal_keeps_how_it_works_together_and_the_pdf_is_still_short():
+    md = PROPOSAL.read_text(encoding="utf-8")
+    start = md.index('<div class="keep">')
+    assert md.index("## How it works") > start and md.index("architecture.svg") > md.index("## How it works")
+    assert "break-inside: avoid" in (DOCS / "make_proposal_pdf.py").read_text(encoding="utf-8")

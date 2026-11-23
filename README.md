@@ -20,13 +20,11 @@
 
 <table>
   <tr>
-    <td align="center" width="33%"><img src="docs/assets/app-commuter-cp-to-anand-vihar.png" alt="Commuter screen: Connaught Place to ISBT Anand Vihar on a weekday at 18:00, with a Usually crowded chip, the crowded stretch named, and a Leave later card" width="260"></td>
-    <td align="center" width="33%"><img src="docs/assets/app-commuter-leave-later-mandi-house.png" alt="Commuter screen: Mandi House to Laxmi Nagar at 18:00, fastest option usually crowded, leaving later usually standing" width="260"></td>
-    <td align="center" width="34%"><img src="docs/assets/app-operator-view.png" alt="Operator view: ranked extra trips, corridor map with a time slider and route heat strip" width="330"></td>
+    <td align="center" width="38%"><img src="docs/assets/app-commuter-leave-later-mandi-house.png" alt="Commuter screen: Mandi House to Laxmi Nagar at 18:00, fastest option usually crowded, leaving later usually standing" width="300"></td>
+    <td align="center" width="62%"><img src="docs/assets/app-operator-view.png" alt="Operator view: ranked extra trips, corridor map with a time slider and route heat strip" width="520"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Commuter screen.</b> The busiest stretch is named, and the card says how sure we are.</sub></td>
-    <td align="center"><sub><b>Leave later.</b> Shown only when a later bus is really better.</sub></td>
+    <td align="center"><sub><b>Commuter screen, Leave later.</b> The fastest bus is usually crowded; a bus 20 minutes later is usually standing. Shown only when a later bus is really better.</sub></td>
     <td align="center"><sub><b>Operator view.</b> Where one extra trip takes the most people out of crowded buses.</sub></td>
   </tr>
 </table>
@@ -50,9 +48,11 @@ Five journeys to try first (weekday):
 | 4 | Mandi House → Laxmi Nagar | 18:00 | A **Leave later** card: a later bus that is really better |
 | 5 | Ambedkar Nagar → AIIMS | 09:00 | A **Less crowded** option that costs a few minutes |
 
+<p align="center"><img src="docs/assets/app-commuter-cp-to-anand-vihar.png" alt="Commuter screen: Connaught Place to ISBT Anand Vihar on a weekday at 18:00, with a Usually crowded chip, the crowded stretch named, and a Leave later card" width="240"><br><sub>Journey 2. The app tells you when it uses a nearby stop for the place you typed, as in the note at the top of the card.</sub></p>
+
 ## The problem
 
-Delhi has thousands of buses, and every journey planner picks a trip by time alone. None of them can tell a rider that the fastest bus is the one that is usually packed at 18:00, or that leaving twenty minutes later usually means a seat. Nobody counts people on Delhi buses by stretch, so we estimate it from what *is* recorded: **2,559,899 ONDC app tickets from October 2026**, matched to the official timetable and to GPS traces, then scaled up to everyone on board and checked against everything we can compare it with.
+Delhi has thousands of buses, and every journey planner picks a trip by time alone. None of them can tell a rider that the fastest bus is the one that is usually packed at 18:00, or that a later bus can be the better one: on Mandi House to Laxmi Nagar at 18:00 the fastest bus is usually crowded, and leaving at 18:20 is usually standing instead, on a trip of the same length. Nobody counts people on Delhi buses by stretch, so we estimate it from what *is* recorded: **2,559,899 ONDC app tickets from October 2026**, matched to the official timetable and to GPS traces, then scaled up to everyone on board and checked against everything we can compare it with.
 
 The result is a crowding level for every route, direction, stretch between two stops and half hour, a planner that shows it beside each trip option, and a second screen that tells a bus operator where one extra trip helps most.
 
@@ -104,7 +104,7 @@ We wrote down what we expected to see **before** the first full run (`validation
 | **Weekends** lower, flatter, later peak | **Hit** on all three |
 | **Direction.** Inbound busier in the morning, outbound in the evening | **Hit.** 80% of 359 radial route pairs in the morning, 78% in the evening |
 | **Week to week.** Two different weeks of the month, each alone | 76% of rider-weighted cells keep their level; load correlation 0.78. A held-out week lands inside our range in 63% of cells |
-| **Published DTC bus-km per day** against 501,000 | **Hit.** Model 496,158 |
+| **Published DTC bus-km per day** against 501,000 | **Hit.** Model 496,158, once GPS measured the trips that ran; the timetable alone was 2.29 times the published figure |
 | **Published load factor** band 0.78–0.89 | **Miss.** Model 0.54, below the band. See the bracket below |
 | **Ten researched busy corridors** | 10 of 10 by the rule we wrote down, **but chance alone gives 10.0 of 10**, so that proves little. The honest readings: 19% of corridor stretches sit in the top decile (chance 10%), and 7 of 10 hit with both ends on the corridor |
 
@@ -186,7 +186,7 @@ data/gps_aggregates/  the committed GPS aggregate (trips that ran, by route and 
 tests/           unit, golden-journey and documentation tests
 ```
 
-<sub>README, technical note and proposal are rendered from `*.tmpl.md` templates by the last pipeline stage, so every number in them comes from the run that produced the tables (run `20261123-1927-10faec86`, code `43fe4e2`, finished 2026-11-23 19:27 IST).</sub>
+<sub>README, technical note and proposal are rendered from `*.tmpl.md` templates by the last pipeline stage, so every number in them comes from the run that produced the tables (run `20261123-1952-f9fb356b`, code `7ad173f`, finished 2026-11-23 19:52 IST).</sub>
 
 ## Data and credit
 

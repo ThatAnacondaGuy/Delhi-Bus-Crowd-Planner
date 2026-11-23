@@ -60,9 +60,12 @@ tbody tr:nth-child(even) td { background:#fcfbf8; }
 .gallery th { vertical-align:bottom; }
 .gallery td { vertical-align:top; text-align:left; padding-top:5px; }
 .gallery th img { margin:0 auto; border-radius:8px; border:1px solid var(--line); }
-.gallery th img { max-height:196px; width:auto; }
-.gallery th:nth-child(1), .gallery th:nth-child(2) { width:23%; }
-.diagram img { width:100%; max-height:236px; object-fit:contain; margin:2px auto 3px; }
+.gallery table { break-inside: avoid; }
+.gallery th img { max-height:400px; width:auto; }
+.gallery th:nth-child(1), .gallery th:nth-child(2) { width:27%; }
+.gallery th:nth-child(3) img { width:100%; max-height:none; }
+.keep { break-inside: avoid; page-break-inside: avoid; }
+.diagram img { width:100%; height:auto; margin:3px auto 5px; }
 .tiles table { border:0; margin:5px 0 7px; table-layout:fixed; }
 .tiles th, .tiles td { border:0; background:none !important; padding:0 4px; text-align:left; }
 .tiles th { background:var(--paper) !important; border:1px solid var(--line); border-bottom:0; border-radius:8px 8px 0 0;

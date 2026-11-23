@@ -1155,6 +1155,7 @@ def headline(con, gates, exp_res, rep, pub, sens, diag, repro) -> dict:
         "dtc_bus_km_model": pub["dtc_bus_km"]["model"], "dtc_bus_km_scheduled": pub["dtc_bus_km"]["scheduled"],
         "dtc_rho_effective": pub["dtc_bus_km"]["rho"], "dtc_bus_km_published": pub["dtc_bus_km"]["published"],
         "dtc_bus_km_hit": pub["dtc_bus_km"]["hit"], "dtc_implied_rho": pub["dtc_bus_km"]["implied_rho"],
+        "dtc_bus_km_scheduled_ratio": pub["dtc_bus_km"]["scheduled"] / pub["dtc_bus_km"]["published"],
         "dtc_bus_km_band_low": pub["dtc_bus_km"]["band"][0], "dtc_bus_km_band_high": pub["dtc_bus_km"]["band"][1],
         "load_factor_band_low": pub["load_factor"]["band"][0],
         "load_factor_band_high": pub["load_factor"]["band"][1],

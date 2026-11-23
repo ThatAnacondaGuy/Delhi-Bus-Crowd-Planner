@@ -7,7 +7,7 @@
 
 Transport Stack Hackathon 2026 · Phase 1 · Problem 2 · Aniket Ingale and Ashish Maurya (Ash)
 
-<sub>Run `20261123-1927-10faec86` · code `43fe4e2` · finished 2026-11-23 19:27 IST · every number below is read from that run</sub>
+<sub>Run `20261123-1952-f9fb356b` · code `7ad173f` · finished 2026-11-23 19:52 IST · every number below is read from that run</sub>
 
 </div>
 
@@ -74,7 +74,7 @@ Because the timetable is a template, run times come from tickets. Two tickets bo
 
 The timetable lists 80,357 trips a day. DTC's published bus-km is far below what that schedule implies, so dividing riders by *scheduled* buses would spread them too thinly. From GPS we count a trip as run when one vehicle passes at least 80% of the route's stops in order (positions interpolated between pings, within 75 m of a stop). The share that ran is set only where at least 80% of the route's ticket-linked vehicles appear in the feed (1,733 of 2,574 routes). Everywhere else it falls back, in order, to the route's own value, then to the operator's value for that hour and day type, then to the operator's value for the day type. It is never set to 1.
 
-**Result:** about 38% of scheduled trips show up as having run on weekdays. Applied to the timetable, DTC bus-km come to 496,158 a day against 501,000 published, which is a check we did not tune to (see 6.4).
+**Result:** about 38% of scheduled trips show up as having run on weekdays. Applied to the timetable, DTC bus-km come to 496,158 a day against 501,000 published, which is an independent check on the trip-ran rule, not something the rule was fitted to (6.4 also says how far the timetable alone was off).
 
 <p align="center"><img src="assets/fig-trips-ran-by-hour.svg" alt="Share of scheduled trips that ran, by hour, from GPS" width="720"></p>
 
@@ -82,7 +82,7 @@ The timetable lists 80,357 trips a day. DTC's published bus-km is far below what
 
 Each resolved ticket is placed on the stretches between its boarding and alighting stops, at the time the bus is on each stretch: purchase time plus the corrected run time from the boarding stop. Purchase time is a good proxy for boarding. Every stretch exists in every window with explicit zeros, so a quiet stretch is a measured zero, not a missing value.
 
-**Alighting correction.** App tickets end at route terminals more often than they start there (people buy near the end of a ride): the median route-direction has 1.36 times as many terminal alightings as the reverse direction has terminal boardings, and one in ten has 2.0 times or more. We cap terminal alightings at the reverse route's terminal boardings times the route's intermediate-stop ratio, and spread the excess over earlier stops in the same fare slab in proportion to the reverse direction's boardings. If the reverse route has fewer than 5 terminal boardings in the month it is uninformative, so we apply no correction and flag the route instead. Of 1,674 route directions, 1,012 have a known ratio, 816 were corrected (145,061 passengers moved) and 662 are flagged *alighting-sensitive*: their last 2 stretches show a Rough guess at best. The result is published with and without the correction (6.5).
+**Alighting correction.** App tickets end at route terminals more often than they start there (people buy near the end of a ride): the median route-direction has 1.36 times as many terminal alightings as the reverse direction has terminal boardings, and one route direction in ten sits at the 2.0 cap (ratios are clamped there, so how far above it the true ratio goes is not visible). We cap terminal alightings at the reverse route's terminal boardings times the route's intermediate-stop ratio, and spread the excess over earlier stops in the same fare slab in proportion to the reverse direction's boardings. If the reverse route has fewer than 5 terminal boardings in the month it is uninformative, so we apply no correction and flag the route instead. Of 1,674 route directions, 1,012 have a known ratio, 816 were corrected (145,061 passengers moved) and 662 are flagged *alighting-sensitive*: their last 2 stretches show a Rough guess at best. The result is published with and without the correction (6.5).
 
 ### 2.5 Buses and riders per bus
 
@@ -150,7 +150,7 @@ Every constant below lives in code, mostly in [`src/pipeline/config.py`](../src/
 | Load window, weekday / weekend | 90 min every 30; 120 min every 60 | `WINDOWS` | Enough tickets per cell without blurring the peak | Not varied |
 | Widen when no bus is scheduled | ±30 min, then route-hour | `SUPPLY_WIDEN_MIN` | Never divide by a floor | Gate: under 1% of volume |
 | Ticket-pair ratio window | 0.4-2.5 (alternative 0.25-4) | `PAIR_RATIO_BOUNDS` in `network.py` | Drop pairs that span two trips | DTC 18:00 factor 1.423 vs 1.521 |
-| A trip counted as run | at least 80% of stops, in order | `GPS_TRIP_STOP_SHARE` | Conservative; bus-km agrees with the published figure | Not varied |
+| A trip counted as run | at least 80% of stops, in order | `GPS_TRIP_STOP_SHARE` | A conservative definition of a trip that ran, fixed before we compared bus-km with the published figure; the agreement in 6.4 is an independent check that corroborates it, not the reason for the rule | Not varied |
 | GPS used for a route | at least 80% of its linked vehicles in the feed | `GPS_COVERAGE_MIN` | Avoids a share built on a few buses | Fallback chain (2.3) |
 | 9 m bus rule | route starts with D-, or at least 50% of vehicles that sell 5+ tickets on D- routes | `DEVI_ROUTE_SHARE`, `DEVI_VEHICLE_MIN_TICKETS` | The D- routes are DEVI buses; the rest is an inference | 90%: 0.4% |
 | Alighting correction | ratio clamped to 0.5–2.0; reverse uninformative under 5 boardings | `ALIGHTING_MIN_REVERSE_BOARD` | Corrects terminal asymmetry without erasing it | Correction off: 1.0% |
@@ -212,7 +212,7 @@ This is consistent, not proven: pass holders are counted nowhere we can see, the
 | Morning peak in 08–10, evening peak in 17–20 | **Hit.** Busiest hours 09:00 and 19:00 |
 | Weekend lower, flatter, with a later peak | **Hit** on all three |
 | Radial routes busier inbound in the morning, outbound in the evening | **Hit.** 79.7% and 78.3% of 359 route pairs |
-| DTC bus-km within ±20% of 501,000 a day | **Hit.** Model 496,158 (band 400,800–601,200) |
+| DTC bus-km within ±20% of 501,000 a day | **Hit.** Model 496,158 (band 400,800–601,200), once GPS measured the trips that ran; the timetable alone was a miss (6.4) |
 | Fleet load factor inside the published 0.78–0.89 band | **Miss.** Model 0.54 (6.4) |
 | Ten researched corridors | 6.3 |
 | GPS stop-time activity rises with boardings and alightings | Not built in Phase 1; not counted as a miss |
@@ -232,7 +232,7 @@ By that rule: strong 2 of 2, moderate 4 of 4, weak 4 of 4, **10 of 10 in all**. 
 
 ### 6.4 Published figures and the load-factor bracket
 
-**Bus-km: hit.** Scheduled DTC bus-km are 1,147,445 a day against 501,000 published, which implies that only about 44% of scheduled service ran. GPS measures the share that ran independently, at 43% (bus-km weighted), and the modelled 496,158 a day falls inside the band. Two separate routes to about the same share is the best evidence we have that the bus supply is roughly right.
+**Bus-km: hit, but only after we measured the trips that ran.** With the timetable alone, the same check was a miss: scheduled DTC bus-km are 1,147,445 a day, 2.29 times the 501,000 published, which implies that only about 44% of scheduled service ran. We did not tune a parameter to close that gap. We replaced the assumption that every scheduled trip runs with a measurement: the GPS trips-that-ran layer (2.3), whose rule for a run trip was fixed beforehand. With it, the share that ran is 43% (bus-km weighted) and the modelled 496,158 a day falls inside the band. Published bus-km and GPS are independent sources that agree on how much service ran, which is the best evidence we have that the bus supply is roughly right.
 
 **Load factor: miss.** Weekday passenger-km over seat-km is 0.54 for the model as it stands (DTC 0.55, cluster 0.51), below the published 0.78–0.89. The definitions differ (DTC computes load factor from revenue against seating capacity; the cluster figure uses another formula), so this is a rough check. Two cases bracket the published band:
 
