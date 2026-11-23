@@ -993,6 +993,15 @@ def doc_numbers(con, diag, cov, h) -> dict:
     if _has_table(con, "dq_resolve"):
         for reason, n in con.execute("SELECT reason, tickets FROM dq_resolve").fetchall():
             out[f"rejected_{reason}"] = int(n)
+    # tickets per scheduled trip: why per-trip running counts are not used (about one app ticket per scheduled trip)
+    if _has_table(con, "gps_route_hour"):
+        trips = con.execute("SELECT sum(scheduled_trips) FROM gps_route_hour WHERE day_type = 'weekday'").fetchone()[0]
+        wk = con.execute("""SELECT count(*), count(DISTINCT t.date) FROM tickets_clean t JOIN clean_days d USING (date)
+                            WHERE d.day_type = 'weekday' AND NOT d.is_excluded_date""").fetchone()
+        if trips and wk[1]:
+            out["scheduled_trips_per_day"] = int(trips)
+            out["tickets_per_weekday"] = wk[0] / wk[1]
+            out["tickets_per_scheduled_trip"] = wk[0] / wk[1] / trips
     # app riders as a share of published riders
     try:
         pub = [float(h[f"published_ridership_{op}"]) for op in ("dtc", "dimts")]
@@ -1030,6 +1039,10 @@ def doc_numbers(con, diag, cov, h) -> dict:
                                 [op, hr]).fetchone()
                 if v:
                     out[f"{op.lower()}_clock_factor_{hr}h"] = float(v[0])
+    dqn = _dq(con, "dq_network")
+    for k in ("bus_mix_default", "bus_mix_devi_name", "bus_mix_is_ac", "bus_mix_vehicle_rule", "places", "place_stops"):
+        if k in dqn:
+            out[k] = int(dqn[k])
     pw = diag.get("pair_ratio_window") or {}
     out["ticket_pairs"] = (pw.get("default") or {}).get("pairs")
     out["ticket_pairs_alternative_window"] = (pw.get("wide") or {}).get("pairs")
