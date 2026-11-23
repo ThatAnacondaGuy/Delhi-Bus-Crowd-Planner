@@ -29,7 +29,8 @@ STAGE_INPUTS = {
     "resolve": lambda p: {f"gtfs_{f.removesuffix('.txt')}": p.gtfs_dir / f for f in GTFS_FILES},
     "gps": lambda p: {"gps_aggregates": p.gps_aggregates / "gps_route_hour.csv"},
     "render": lambda p: {"validation_report": p.processed / "validation_report.json",
-                         **{f"template_{t.name}": t for t in sorted((p.repo / "docs").glob("*.tmpl.md"))}},
+                         **{f"template_{t.name}": t for t in sorted((p.repo / "docs").glob("*.tmpl.md"))},
+                         **{f"template_{t.name}": t for t in sorted(p.repo.glob("README.tmpl.md"))}},
 }
 
 

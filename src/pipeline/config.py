@@ -169,3 +169,12 @@ OVER_CAPACITY_TOP_ROUTES = 15
 RESOLUTION_MIN_SHARE = 0.8             # routes with a smaller share of their tickets resolved are listed
 RESOLUTION_MIN_TICKETS = 50
 PAIR_WINDOW_ALTERNATIVE = (0.25, 4.0)  # R17: the wider ticket-pair ratio window shown beside the 0.4-2.5 default
+
+# Task 19: figures quoted in the documents for the app-share reconciliation (design 5.14). Both are published
+# outside figures, not pipeline outputs; the documents show them next to the number the pipeline computes.
+HACKATHON_APP_TICKET_SHARE = (0.03, 0.04)   # Transport Stack hackathon pages and Problem 3 brief: e-tickets, share of bus tickets
+PUBLISHED_WOMEN_FREE_JOURNEYS = Source(
+    562_100_000, "2025-26 (April to February)", _ES,
+    "Economic Survey of Delhi 2025-26, ch. 12: women's free journeys in DTC and cluster buses, 56.21 crore; "
+    "the period is read as 334 days (1 April to 28 February), so a per-day figure is rough")
+WOMEN_FREE_PERIOD_DAYS = 334

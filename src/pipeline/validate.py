@@ -18,11 +18,12 @@ import numpy as np
 import pandas as pd
 
 from . import loads, network
-from .config import (BUS_SPECS, CENTRE_POINTS, CORRIDOR_TOP_QUANTILE, E_SCALE_CEILING_MULT, OVER_CAPACITY_TOP_ROUTES,
-                     PAIR_WINDOW_ALTERNATIVE, PUBLISHED_RIDERSHIP, RADIAL_AM, RADIAL_NEAR_KM, RADIAL_PM,
+from .config import (BUS_SPECS, CENTRE_POINTS, CORRIDOR_TOP_QUANTILE, E_SCALE_CEILING_MULT, HACKATHON_APP_TICKET_SHARE,
+                     OVER_CAPACITY_TOP_ROUTES, PAIR_WINDOW_ALTERNATIVE, PUBLISHED_RIDERSHIP,
+                     PUBLISHED_WOMEN_FREE_JOURNEYS, RADIAL_AM, RADIAL_NEAR_KM, RADIAL_PM,
                      RADIAL_SPREAD_KM, RESOLUTION_MIN_SHARE, RESOLUTION_MIN_TICKETS, RUNTIME_GATE_TOL, S0_MAX_SHARE,
                      SENSITIVITY_9M_SHARE, SENSITIVITY_CAPACITY, SENSITIVITY_CEILINGS, SENSITIVITY_E, TICKET_BANDS,
-                     WEEK_BLOCKS, WINDOWS)
+                     WEEK_BLOCKS, WINDOWS, WOMEN_FREE_PERIOD_DAYS)
 from .errors import GateError
 from .expectations import load_expectations
 
@@ -971,6 +972,104 @@ def _jsonable(o):
     return o
 
 
+def _has_table(con, name: str) -> bool:
+    return bool(con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
+                            [name]).fetchone()[0])
+
+
+def doc_numbers(con, diag, cov, h) -> dict:
+    """Numbers the README, technical note and proposal quote, each computed here from the pipeline's own tables
+    (design 5.14). Anything a table lacks (a toy run) is left out, and a template that asks for it fails loudly."""
+    out: dict = {}
+    c = con.execute("""SELECT sum(pax), count(DISTINCT route_raw),
+                       avg(CASE WHEN vehicle IS NULL OR vehicle = 'NULL' THEN 1.0 ELSE 0.0 END)
+                       FROM tickets_clean""").fetchone()
+    out["passengers_clean"] = int(c[0]) if c[0] is not None else None
+    out["route_strings"] = int(c[1])
+    out["vehicle_missing_share"] = float(c[2]) if c[2] is not None else None
+    out["days_in_file"] = int(con.execute("SELECT count(*) FROM clean_days").fetchone()[0])
+    if _has_table(con, "route_meta"):
+        out["gtfs_routes"] = int(con.execute("SELECT count(*) FROM route_meta").fetchone()[0])
+    if _has_table(con, "dq_resolve"):
+        for reason, n in con.execute("SELECT reason, tickets FROM dq_resolve").fetchall():
+            out[f"rejected_{reason}"] = int(n)
+    # app riders as a share of published riders
+    try:
+        pub = [float(h[f"published_ridership_{op}"]) for op in ("dtc", "dimts")]
+        e = [float(h[f"e_{op}"]) for op in ("dtc", "dimts")]
+        share = sum(p / x for p, x in zip(pub, e)) / sum(pub)
+        lo, hi = HACKATHON_APP_TICKET_SHARE
+        free = PUBLISHED_WOMEN_FREE_JOURNEYS.value / WOMEN_FREE_PERIOD_DAYS
+        out.update({
+            "app_share_of_riders": share, "app_riders_one_in": round(1 / share),
+            "hackathon_share_low": lo, "hackathon_share_high": hi,
+            "outside_ticket_base_needed_low": 1 - share / lo, "outside_ticket_base_needed_high": 1 - share / hi,
+            "women_free_journeys": PUBLISHED_WOMEN_FREE_JOURNEYS.value,
+            "women_free_per_day_rough": free, "women_free_share_rough": free / sum(pub),
+            "published_ridership_total": sum(pub)})
+    except (KeyError, TypeError, ZeroDivisionError):
+        pass
+    # how crowded, by day type and hour band (share of scheduled bus-km)
+    for day in ("weekday", "weekend"):
+        lv = (cov.get(day) or {}).get("level") or {}
+        for k, v in lv.items():
+            out[f"{day}_{k}_share"] = v
+    ev = (cov.get("all") or {}).get("evidence") or {}
+    for k, v in ev.items():
+        out[f"evidence_{k}_share"] = v
+    for b in (diag.get("level_shares") or {}).get("by_band", []):
+        if b["day_type"] == "weekday" and b["band"] in ("08-11", "11-17", "17-21"):
+            tag = b["band"].replace("-", "")
+            for k in ("seats", "standing", "crowded", "no_data"):
+                out[f"weekday_{tag}_{k}_share"] = b[k]
+    # the ticket-pair clock by hour of day
+    if _has_table(con, "runtime_factors"):
+        for op in ("DTC", "DIMTS"):
+            for hr in (6, 8, 12, 18, 22):
+                v = con.execute("SELECT factor FROM runtime_factors WHERE scope = 'operator' AND key = ? AND hour = ?",
+                                [op, hr]).fetchone()
+                if v:
+                    out[f"{op.lower()}_clock_factor_{hr}h"] = float(v[0])
+    pw = diag.get("pair_ratio_window") or {}
+    out["ticket_pairs"] = (pw.get("default") or {}).get("pairs")
+    out["ticket_pairs_alternative_window"] = (pw.get("wide") or {}).get("pairs")
+    # GPS
+    g = diag.get("gps_rho") or {}
+    if g.get("status") == "available":
+        wd = g["weekday"]
+        out.update({"gps_trips_ran_share_weekday": wd["scheduled_weighted_rho"],
+                    "gps_routes_covered": wd["routes_with_coverage_80"], "gps_routes_total": wd["routes"],
+                    "gps_trips_ran_first_third": wd["first_third"], "gps_trips_ran_last_third": wd["last_third"]})
+        r = [v["ratio"] for k, v in g["runtime_ratio_by_hour"].items()
+             if 5 <= int(k) <= 21 and v["cells"] >= 100 and v["ratio"] is not None]
+        if r:
+            out.update({"gps_runtime_ratio_min": min(r), "gps_runtime_ratio_max": max(r),
+                        "gps_runtime_ratio_median": float(np.median(r))})
+    # terminal alighting correction, split-half agreement, tickets that did not resolve
+    t, sh, rb = diag.get("terminal_asymmetry") or {}, diag.get("null_vs_linked_split_half") or {}, \
+        diag.get("resolution_below_80") or {}
+    out.update({"terminal_routes": t.get("routes"), "terminal_routes_known": t.get("routes_with_known_ratio"),
+                "terminal_routes_corrected": t.get("routes_corrected"),
+                "terminal_moved_passengers": t.get("moved_passengers"),
+                "terminal_ratio_median": t.get("median_ratio"), "terminal_ratio_p90": t.get("p90_ratio"),
+                "split_half_pearson": sh.get("pearson"), "split_half_route_hours": sh.get("route_hours"),
+                "linked_ticket_share": sh.get("linked_ticket_share"),
+                "low_resolution_route_strings": rb.get("below_threshold"),
+                "low_resolution_ticket_share": rb.get("share_of_tickets")})
+    # operator view: the best single extra trip per operator, weekday
+    if _has_table(con, "operator_trips"):
+        for op in ("DTC", "DIMTS"):
+            r = con.execute("""SELECT short_name, depart_min, crowded_rider_min_removed, riders_moved_down
+                               FROM operator_trips WHERE day_type = 'weekday' AND operator = ?
+                               ORDER BY crowded_rider_min_removed DESC, short_name LIMIT 1""", [op]).fetchone()
+            if r:
+                out.update({f"operator_top_{op.lower()}_route": r[0],
+                            f"operator_top_{op.lower()}_departs": f"{int(r[1]) // 60:02d}:{int(r[1]) % 60:02d}",
+                            f"operator_top_{op.lower()}_crowded_minutes": float(r[2]),
+                            f"operator_top_{op.lower()}_riders_moved": float(r[3])})
+    return {k: v for k, v in out.items() if v is not None}
+
+
 def headline(con, gates, exp_res, rep, pub, sens, diag, repro) -> dict:
     dql, dqn = _dq(con, "dq_levels"), _dq(con, "dq_network")
     c = gates["ticket_conservation"]
@@ -1066,6 +1165,7 @@ def headline(con, gates, exp_res, rep, pub, sens, diag, repro) -> dict:
     }
     for k, v in sens.items():
         h[f"sensitivity_{k}"] = v["share_changed"]
+    h.update(doc_numbers(con, diag, cov, h))
     return h
 
 

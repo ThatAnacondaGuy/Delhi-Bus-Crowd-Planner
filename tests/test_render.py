@@ -78,3 +78,49 @@ def test_run_renders_every_template_and_says_so_when_none(tmp_path, capsys):
     (paths.repo / "docs" / "TECHNICAL_NOTE.tmpl.md").write_text("{{match_rate:.1%}} / {{run_id}}")
     assert render.run(None, paths) == "1 file(s) rendered"
     assert (paths.repo / "docs" / "TECHNICAL_NOTE.md").read_text() == "93.1% / rid"
+
+
+def test_run_also_renders_the_root_readme_template(tmp_path):
+    paths = _paths(tmp_path)
+    (paths.repo / "docs" / "TECHNICAL_NOTE.tmpl.md").write_text("note {{match_rate:.1%}}")
+    (paths.repo / "README.tmpl.md").write_text("readme {{match_rate:.1%}} {{run_id}}")
+    assert render.run(None, paths) == "2 file(s) rendered"
+    assert (paths.repo / "README.md").read_text() == "readme 93.1% rid"
+    assert (paths.repo / "docs" / "TECHNICAL_NOTE.md").read_text() == "note 93.1%"
+
+
+def test_readme_template_alone_is_enough(tmp_path):
+    paths = _paths(tmp_path)
+    (paths.repo / "README.tmpl.md").write_text("{{match_rate:.0%}}")
+    assert render.run(None, paths) == "1 file(s) rendered"
+    assert (paths.repo / "README.md").read_text() == "93%"
+
+
+def test_render_stage_input_list_names_the_root_template(tmp_path):
+    from src.pipeline import run as run_mod
+    paths = _paths(tmp_path)
+    (paths.repo / "README.tmpl.md").write_text("x")
+    (paths.repo / "docs" / "A.tmpl.md").write_text("x")
+    names = run_mod.STAGE_INPUTS["render"](paths)
+    assert "template_README.tmpl.md" in names and "template_A.tmpl.md" in names
+
+
+def test_config_numbers_come_from_config_and_fill_templates(tmp_path):
+    from src.pipeline.config import BUS_SPECS, E_SCALE_CEILING_MULT, SCALE_RANGE, SEATS_FRACTION
+    n = render.config_numbers()
+    assert n["seats_12m_ac"] == BUS_SPECS["12m_ac"].seats and n["crush_9m_devi"] == BUS_SPECS["9m_devi"].crush
+    assert n["rated_12m_nonac"] == BUS_SPECS["12m_nonac"].rated_total
+    assert n["seats_fraction"] == SEATS_FRACTION and (n["scale_low"], n["scale_high"]) == SCALE_RANGE
+    assert n["e_scale_ceiling"] == E_SCALE_CEILING_MULT
+    assert n["gps_sample_days"] == 10 and n["min_daily_trips"] == 3 and n["no_data_cutoff"] == 0.5
+    t, out = _tmpl(tmp_path, "{{seats_12m_ac}}/{{rated_12m_ac}}/{{crush_12m_ac}} x{{scale_low:.1f}}-{{scale_high:.1f}}")
+    render.render_file(t, out, n)
+    assert out.read_text() == "35/63/100 x0.7-1.3"
+    assert all(not isinstance(v, (dict, list)) for v in n.values())
+
+
+def test_run_fills_config_numbers_without_the_report(tmp_path):
+    paths = _paths(tmp_path)
+    (paths.repo / "README.tmpl.md").write_text("{{seats_12m_ac}} seats, ran {{run_id}}")
+    render.run(None, paths)
+    assert (paths.repo / "README.md").read_text() == "35 seats, ran rid"

@@ -235,3 +235,26 @@ def test_bus_km_weights_come_from_the_window_config(con, tmp_path, toy_gtfs_dir,
     assert base > 0
     monkeypatch.setattr(validate, "WINDOWS", {**validate.WINDOWS, "weekday": WindowSpec(60, 90)})
     assert weekday_bus_km() == pytest.approx(2 * base)
+
+
+def test_headline_carries_the_numbers_the_documents_quote(con, tmp_path, toy_gtfs_dir, monkeypatch):
+    paths = toy_report(con, tmp_path, toy_gtfs_dir, monkeypatch)
+    h = validate.run(con, paths)["headline_numbers"]
+    for k in ("passengers_clean", "route_strings", "days_in_file", "weekday_crowded_share",
+              "evidence_rough_share", "ticket_pairs"):
+        assert k in h and h[k] is not None, k
+
+
+def test_app_share_numbers_follow_published_ridership_and_scale(con, tmp_path, toy_gtfs_dir, monkeypatch):
+    paths = toy_report(con, tmp_path, toy_gtfs_dir, monkeypatch)
+    rep = validate.run(con, paths)
+    head = {"published_ridership_dtc": 2_000_000.0, "published_ridership_dimts": 1_000_000.0,
+            "e_dtc": 40.0, "e_dimts": 100.0}
+    out = validate.doc_numbers(con, rep["diagnostics"], rep["coverage_summary"], head)
+    share = (2_000_000 / 40 + 1_000_000 / 100) / 3_000_000
+    assert out["app_share_of_riders"] == pytest.approx(share)
+    assert out["app_riders_one_in"] == round(1 / share)
+    # if app tickets are 3% or 4% of tickets, this share of riders must be outside the ticket base
+    assert out["outside_ticket_base_needed_low"] == pytest.approx(1 - share / 0.03)
+    assert out["outside_ticket_base_needed_high"] == pytest.approx(1 - share / 0.04)
+    assert all(v is not None for v in out.values())
