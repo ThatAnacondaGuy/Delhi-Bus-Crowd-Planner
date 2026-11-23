@@ -233,3 +233,87 @@ def test_markdown_converter_handles_what_the_proposal_uses():
     assert "<picture" not in mod.convert("<picture>\n<source media=\"x\" srcset=\"a.svg\">\n<img src=\"b.svg\" alt=\"x\">\n</picture>")
     # a table straight after a paragraph and a lone pipe line must not hang the converter
     mod.convert("para\n| not a table\n\ntext")
+
+
+# ---------------------------------------------------------------- the demo video plan
+
+VIDEO = DOCS / "DEMO_VIDEO_SCRIPT.md"
+LIVE_URL = "https://huggingface.co/spaces/ThatAnacondaGuy/delhi-bus-crowd-planner"
+REPO_URL = "https://github.com/ThatAnacondaGuy/Delhi-Bus-Crowd-Planner"
+
+
+def _secs(stamp: str) -> int:
+    m, s = stamp.split(":")
+    return int(m) * 60 + int(s)
+
+
+def _scene_rows(text: str) -> list[tuple[str, int, int]]:
+    return [(n, _secs(a), _secs(b)) for n, a, b in re.findall(r"^\| (\d\d) \| (\d:\d\d)[–-](\d:\d\d) \|", text, flags=re.M)]
+
+
+def _vo_by_scene(text: str) -> dict[str, tuple[int, int, int]]:
+    """Scene number -> (start, end, spoken English words) from the '### Scene NN' blocks of the voice-over section."""
+    sec = _section(text, "4. Voice-over script")
+    out = {}
+    for m in re.finditer(r"^### Scene (\d\d) .*?\((\d:\d\d)[–-](\d:\d\d)\)\s*$(.*?)(?=^### |\Z)", sec, flags=re.M | re.S):
+        lines = [ln[2:] for ln in m.group(4).splitlines() if ln.startswith("> ") and not ln.startswith("> HI:")]
+        spoken = re.sub(r"\[[^\]]*\]|\*|/", " ", " ".join(lines))
+        out[m.group(1)] = (_secs(m.group(2)), _secs(m.group(3)), len(re.findall(r"[A-Za-z0-9’'-]+", spoken)))
+    return out
+
+
+def test_video_plan_exists_with_every_part_the_brief_asks_for():
+    text = VIDEO.read_text(encoding="utf-8")
+    for h in ("## 1. Concept and tone", "## 2. The story in five beats", "## 3. Scene table", "## 4. Voice-over script",
+              "## 5. Animation spec", "## 6. Screen-capture shot list", "## 7. Sound", "## 8. Voice-recording guide",
+              "## 9. Build plan", "## 10. What we need from you", "## 11. Numbers on screen and in the voice-over"):
+        assert h in text, h
+    assert LIVE_URL in text and REPO_URL in text and CREDIT in text and NO_COUNT in text
+    for needle in ("Remotion", "1920", "30 fps", "-16 LUFS", "scene-01.m4a", "Rough guess", "No data"):
+        assert needle in text, needle
+
+
+def test_video_scenes_run_back_to_back_for_exactly_three_minutes():
+    rows = _scene_rows(_section(VIDEO.read_text(encoding="utf-8"), "3. Scene table"))
+    assert len(rows) >= 8
+    assert rows[0][1] == 0 and rows[-1][2] == 180, rows
+    for (_, _, end), (_, start, _) in zip(rows, rows[1:]):
+        assert end == start, rows
+    assert rows[0][2] - rows[0][1] <= 10, "the opening moment must grip inside ten seconds"
+
+
+def test_voice_over_fits_each_scene_at_the_stated_pace():
+    text = VIDEO.read_text(encoding="utf-8")
+    vo = _vo_by_scene(text)
+    rows = _scene_rows(_section(text, "3. Scene table"))
+    assert sorted(vo) == sorted(n for n, _, _ in rows), (sorted(vo), rows)
+    for n, start, end in rows:
+        s, e, words = vo[n]
+        assert (s, e) == (start, end), f"scene {n}: voice-over block and scene table disagree"
+        assert words / 145 * 60 <= (end - start) - 1, f"scene {n}: {words} words do not fit {end - start}s at 145 wpm with a breath"
+        assert words >= 8, f"scene {n} has almost no voice-over"
+    total = sum(w for _, _, w in vo.values())
+    assert 330 <= total <= 440, total
+    assert "No field count was possible" in " ".join(
+        ln for ln in text.splitlines() if ln.startswith("> ") and not ln.startswith("> HI:"))
+
+
+def test_numbers_in_the_video_plan_are_the_rendered_documents_numbers():
+    text = VIDEO.read_text(encoding="utf-8")
+    docs = "\n".join(p.read_text(encoding="utf-8") for p in RENDERED)
+    pattern = r"\d{1,3}(?:,\d{3})+|\d+\.\d+%?|\d+%"
+    ledger = _section(text, "11. Numbers on screen and in the voice-over")
+    ledger_rows = [ln for ln in ledger.splitlines() if ln.startswith("| ") and not ln.startswith("| ---")][1:]
+    assert len(ledger_rows) >= 15
+    for row in ledger_rows:
+        shown = row.split("|")[2].strip()                # the "on screen" column
+        assert shown in docs, f"ledger value {shown!r} is not in the rendered README, note or proposal"
+    for tok in sorted(set(re.findall(pattern, text))):
+        assert tok in docs, f"{tok!r} appears in the video plan but not in the rendered documents"
+
+
+def test_quoted_hindi_and_app_words_match_the_app():
+    js = (REPO / "frontend" / "app.js").read_text(encoding="utf-8")
+    text = VIDEO.read_text(encoding="utf-8")
+    for hindi in ("आमतौर पर सीट मिल जाती है", "आमतौर पर खड़े होकर जाना पड़ता है", "आमतौर पर भारी भीड़", "जानकारी नहीं", "अंदाज़ा (कम टिकट)"):
+        assert hindi in js and hindi in text, hindi
