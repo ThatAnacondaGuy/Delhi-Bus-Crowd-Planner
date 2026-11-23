@@ -82,6 +82,7 @@ def config_numbers() -> dict:
         "devi_route_share": c.DEVI_ROUTE_SHARE, "runtime_min_pairs": c.RUNTIME_MIN_PAIRS,
         "runtime_min_gap_min": c.RUNTIME_MIN_GAP_S // 60, "runtime_gate_tol": c.RUNTIME_GATE_TOL,
         "conservation_tol": c.CONSERVATION_TOL, "s0_max_share": c.S0_MAX_SHARE,
+        "alias_min_in_order": c.ALIAS_MIN_IN_ORDER, "women_free_period_days": c.WOMEN_FREE_PERIOD_DAYS,
         "gps_coverage_min": c.GPS_COVERAGE_MIN, "gps_trip_stop_share": c.GPS_TRIP_STOP_SHARE,
         "gps_sample_days": len(SAMPLE_DAYS), "min_daily_trips": c.MIN_DAILY_TRIPS,
         "less_crowded_slack_min": c.LESS_CROWDED_SLACK[0], "less_crowded_slack_share": c.LESS_CROWDED_SLACK[1],
