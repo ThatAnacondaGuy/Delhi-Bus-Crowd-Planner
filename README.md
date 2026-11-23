@@ -1,285 +1,212 @@
-> Note (18 Nov 2026): this project is being rebuilt on branch `phase1`; the design is in `docs/superpowers/specs/`. Older documents are in `docs/archive/`. This README will be rewritten before submission.
+<!-- Rendered to README.md by `python -m src.pipeline.run --until render`. Edit this template, never README.md: every number below is a placeholder filled from the pipeline's own output. -->
+<div align="center">
 
-# 🚌 Delhi Crowdedness-Aware Bus Journey Planner
-### Transport Stack Hackathon 2026 — Phase 1 (Problem 2)
-**Delhi Transport Corporation (DTC) & DIMTS Cluster Bus Network**
+# Delhi Bus Crowding Planner
 
-[![Transport Stack Hackathon 2026](https://img.shields.io/badge/Transport%20Stack-Problem%202%3A%20Crowd--Aware%20Planner-blueviolet.svg)](#)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg)](https://fastapi.tiangolo.com)
-[![DuckDB](https://img.shields.io/badge/DuckDB-1.1%2B-FFF000.svg)](https://duckdb.org/)
-[![Tests](https://img.shields.io/badge/tests-9%20passed-brightgreen.svg)](#-test-suite--validation)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+### See how crowded each stretch of your Delhi bus trip usually is — before you board.
 
----
+[![Transport Stack Hackathon 2026](https://img.shields.io/badge/Transport%20Stack%20Hackathon%202026-Problem%202-1f4e79)](https://delhi.transportstack.in/hackathon/)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-0f766e)](requirements.lock)
+[![Live demo](https://img.shields.io/badge/live%20demo-Hugging%20Face-b45309)](https://huggingface.co/spaces/ThatAnacondaGuy/delhi-bus-crowd-planner)
+[![Tests](https://img.shields.io/badge/tests-pytest-0f766e)](tests)
+[![Licence MIT](https://img.shields.io/badge/licence-MIT-5f6670)](LICENSE)
 
-## 📌 Executive Summary
+**[Live demo](https://huggingface.co/spaces/ThatAnacondaGuy/delhi-bus-crowd-planner)** ·
+**[Technical note](docs/TECHNICAL_NOTE.md)** ·
+**[Proposal (PDF)](docs/PROPOSAL.pdf)** ·
+**[Validation report](data/processed/validation_report.md)**
 
-Over **4 million commuters** depend daily on Delhi's 6,000+ public buses, yet standard journey planners (Google Maps, static GTFS routers) optimize exclusively for timetable travel time—remaining completely blind to severe passenger crowding, crush loads, and boarding feasibility. 
+<br>
 
-This repository delivers an **end-to-end, production-grade Crowdedness-Aware Journey Planner** for Delhi that pairs real-world Electronic Ticketing Machine (ETM / ONDC) transaction data with static GTFS feeds. Through route-scoped fuzzy entity resolution, vectorized passenger load reconstruction, and a time-dependent multi-criteria McRAPTOR engine, the planner discovers non-dominated Pareto journeys that trade off travel time, transfers, comfort (crowdedness load factor), and air-conditioning preference.
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/assets/app-commuter-cp-to-anand-vihar.png" alt="Commuter screen: Connaught Place to ISBT Anand Vihar on a weekday at 18:00, with a Usually crowded chip, the crowded stretch named, and a Leave later card" width="260"></td>
+    <td align="center" width="33%"><img src="docs/assets/app-commuter-leave-later-mandi-house.png" alt="Commuter screen: Mandi House to Laxmi Nagar at 18:00, fastest option usually crowded, leaving later usually standing" width="260"></td>
+    <td align="center" width="34%"><img src="docs/assets/app-operator-view.png" alt="Operator view: ranked extra trips, corridor map with a time slider and route heat strip" width="330"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Commuter screen.</b> The busiest stretch is named, and the card says how sure we are.</sub></td>
+    <td align="center"><sub><b>Leave later.</b> Shown only when a later bus is really better.</sub></td>
+    <td align="center"><sub><b>Operator view.</b> Where one extra trip takes the most people out of crowded buses.</sub></td>
+  </tr>
+</table>
 
----
-
-## 🏆 Key Results & Validation Highlights
-
-| Metric / Dimension | Baseline / Raw Feed | Our Calibrated Engine | Impact / Benchmark |
-| :--- | :---: | :---: | :--- |
-| **Stop Entity Resolution** | 48.27% raw string match | **93.13% match rate** | **+44.86% boost** via abbreviation expansion (`sec`, `ph-ii`, `stn`) & RapidFuzz |
-| **Valid Commuters Recovered** | 1,237,978 tickets | **2,574,781 forward pax** | **93.51% ticketing volume retained** after directional route alignment |
-| **Network Scale Modeled** | Static GTFS only | **1,213,000 segment-slots** | Full time-dependent coverage across 2,574 canonical routes & 6,862 stops |
-| **Diurnal Peak vs. Lull Contrast** | Uniform / Static | **83% drop in midday P90** | Morning peak P90 = **0.594**; Afternoon lull P90 = **0.102**; Evening peak = **0.409** |
-| **Directional Asymmetry** | Undifferentiated | **Busier direction switches AM↔PM** | Route `717A`: UP 0.802 vs DOWN 0.648 in the morning; DOWN 0.799 vs UP 0.632 in the evening |
-| **McRAPTOR Query Latency** | Multi-second graph search | **~170 ms end-to-end** | Sub-microsecond ($0.27\,\mu\text{s}$) array lookups with automatic time-slot progression |
-| **Headway Wait Modeling** | Flat static wait assumption | **Route-specific $H_{r,t}$** | Empirical headway per route across 5 day windows; $1.5\times$ out-of-vehicle wait penalty |
-| **Boarding-Denial Crush Risk** | Zero missed-bus awareness | **$p_{\text{deny}}$ for $C > 0.80$** | Prevents routing into crush-load buses ($1.7\times$ expected missed-bus delay penalty) |
-| **Smart Departure Nudge** | Fixed departure time only | **$\pm 15$ min shoulder search** | Proactively identifies $\ge 15\%$ crowd drops during peak hours |
-| **Road-Hugging Map Polylines** | Straight-line approximations | **80,859 shaped segments** | Monotonic shape vertex slicing over 965k coordinates from GTFS `shapes.txt` |
-| **Footpath Transfer Topology** | 0 transfer edges | **23,354 walking edges** | Haversine binary search ($\pm 300\text{m}$, $v=1.2\text{ m/s}$) precomputed in 3.5s |
+</div>
 
 ---
 
-## 🏗️ System Architecture & Data Pipeline
+## Try it
 
-```mermaid
-flowchart TD
-    subgraph RawData["Raw Input Datasets"]
-        A1["Raw ETM Ticketing Data<br/>(October-Delhi.csv: 2.56M txns)"]
-        A2["Delhi Static GTFS Feed<br/>(routes, stops, trips, stop_times, shapes)"]
-    end
+**Live demo:** <https://huggingface.co/spaces/ThatAnacondaGuy/delhi-bus-crowd-planner>
+It is a free static page with precomputed answers for a menu of well-known places and departure times, so it opens instantly and never sleeps. The full planner, where you type any pair of places, runs on your own computer from this repository ([Quick start](#quick-start)).
 
-    subgraph Sprint1["Sprint 1: Entity Resolution"]
-        B1["DuckDB Ingestion & Route-Scoped Candidate Filtering"]
-        B2["Delhi Slang & Alias Normalizer<br/>(sec, ph-ii, stn, xing, flyover)"]
-        B3["RapidFuzz Token-Set String Alignment<br/>(93.13% Match Rate, 2.57M Pax)"]
-        B1 --> B2 --> B3
-    end
+Five journeys to try first (weekday):
 
-    subgraph Sprint2["Sprint 2: Flow & Load Calibration"]
-        C1["Vectorized OD Difference-Array Expansion<br/>(1.41M OD Buckets, O(N) CumSum)"]
-        C2["Dual-Source Supply Normalization<br/>(Scheduled Trips + Empirical Fleet Observation)"]
-        C3["ONDC Penetration Calibration (kappa = 25.0)<br/>& 48.52% NULL Vehicle ID Handling"]
-        C4["Time-Dependent Segment Crowding Index<br/>(1.21M Route-Segment-Time Slots)"]
-        C1 --> C2 --> C3 --> C4
-    end
+| # | Journey | Leaves | What it shows |
+|---|---|---|---|
+| 1 | ISBT Anand Vihar → Connaught Place | 18:00 | The brief's own example |
+| 2 | Connaught Place → ISBT Anand Vihar | 18:00 | The reverse trip: the same road, a different answer by direction |
+| 3 | Ambedkar Nagar → ITO | 09:00 | A morning trip on the Ambedkar Nagar – ITO corridor |
+| 4 | Mandi House → Laxmi Nagar | 18:00 | A **Leave later** card: a later bus that is really better |
+| 5 | Ambedkar Nagar → AIIMS | 09:00 | A **Less crowded** option that costs a few minutes |
 
-    subgraph Sprint3["Sprint 3: McRAPTOR Routing Engine"]
-        D1["Spatial Index & Footpaths<br/>(23,354 edges <= 300m, 400m walk-access)"]
-        D2["Fast O(1) Matrix Lookup<br/>(0.27 us/query, dynamic 30-min slot advance)"]
-        D3["Multi-Criteria Pareto Optimization<br/>Cost = T * (1 + beta * C^1.5) + W_transfer"]
-        D4["GTFS Shape Geometry Slicer<br/>(80,859 road-following segments)"]
-        D1 --> D3
-        D2 --> D3
-        D4 --> D3
-    end
+## The problem
 
-    subgraph Sprint4["Sprint 4 & 5: Serving & User Interface"]
-        E1["FastAPI Production REST Service<br/>(/api/plan, /api/stops/search, /api/validation)"]
-        E2["Interactive Responsive UI<br/>(Leaflet Road Polylines + Chart.js Crowding Curves)"]
-        E1 --> E2
-    end
+Delhi has thousands of buses, and every journey planner picks a trip by time alone. None of them can tell a rider that the fastest bus is the one that is usually packed at 18:00, or that leaving twenty minutes later usually means a seat. Nobody counts people on Delhi buses by stretch, so we estimate it from what *is* recorded: **2,559,899 ONDC app tickets from October 2026**, matched to the official timetable and to GPS traces, then scaled up to everyone on board and checked against everything we can compare it with.
 
-    A1 --> Sprint1
-    A2 --> Sprint1
-    A2 --> Sprint2
-    B3 --> Sprint2
-    C4 --> Sprint3
-    Sprint3 --> Sprint4
-```
+The result is a crowding level for every route, direction, stretch between two stops and half hour, a planner that shows it beside each trip option, and a second screen that tells a bus operator where one extra trip helps most.
 
----
+## How it works
 
-## 📂 Repository Directory Structure
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
+    <img src="docs/assets/architecture.svg" alt="System diagram. Inputs: ONDC app tickets, GTFS timetable, GPS feed. Pipeline: clean, resolve, network clock and assets, GPS trips that ran, riders on stretches, alighting correction, supply, scale, levels and evidence, operator ranking, validate, render. Outputs: crowding tables, planner tables, reports. Then the planner and API, and the commuter screen, operator view and live demo." width="900">
+  </picture>
+</p>
+
+<sub>Data packets move along the arrows and each stage lights up in pipeline order. Switch on "reduce motion" in your system settings and the picture stands still.</sub>
+
+**One ticket's story.** Every ticket says where a rider boarded and where they got off. We spread it over the stretches that rider travelled, at the time the bus was on each stretch. We add up everyone on that stretch in a half-hour window, scale the app tickets up to all riders, divide by the buses that really ran, and compare the people on board with the seats and the bus's rated total.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
+    <img src="docs/assets/how-it-works.svg" alt="Five steps: a ticket from boarding to alighting, spread over the stretches it rides, scaled to people on board, compared with seats and rated total, shown as a level chip" width="900">
+  </picture>
+</p>
+
+### What a rider sees
+
+Every level is a word, dots and a colour, never colour alone, and each one comes in Hindi.
+
+| Level | Meaning | Hindi |
+|---|---|---|
+| ●○○ **Usually seats** | people on board stay under 70% of the seats, because some seats are reserved | आमतौर पर सीट मिल जाती है |
+| ●●○ **Usually standing** | more than that, up to what the bus is rated to carry | आमतौर पर खड़े होकर जाना पड़ता है |
+| ●●● **Usually crowded** | more people than the bus is rated to carry | आमतौर पर भारी भीड़ |
+| ○○○ **No data** | not enough tickets or no bus scheduled; never shown as comfortable | जानकारी नहीं |
+
+Each card also says **Based on many tickets** (कई टिकटों पर आधारित) or **Rough guess** (अंदाज़ा (कम टिकट)), names the crowded stretch, and offers three roles: **Fastest**, **Less crowded** and **Leave later**. A **Why?** sheet shows the people-on-board range against the bus's seats and rated total, and says plainly that the data is app tickets, scaled up.
+
+## What makes it trustworthy
+
+We wrote down what we expected to see **before** the first full run (`validation/expectations.yaml`), then reported every hit and every miss. **No field count was possible**: the team is in Pune and no one has counted people on Delhi buses, so none of this measures how close a level is to the truth on a given bus. What we can do is test the model against everything that can be compared with it.
+
+<p align="center">
+  <img src="docs/assets/fig-levels-by-hour.svg" alt="Share of weekday bus-km by crowding level, by hour of day, peaking in the morning and the evening" width="760">
+</p>
+
+| Check | Result |
+|---|---|
+| **Run stops if broken.** Ticket conservation, rider-minutes within 0.5%, buses for the riders, run times, schema, no NaN | All pass. Rider-minutes differ by 0.020%; run times by at most 6.1% |
+| **Peaks** written down in advance: morning 08–10, evening 17–20 | **Hit.** Busiest hours are 09:00 and 19:00 |
+| **Weekends** lower, flatter, later peak | **Hit** on all three |
+| **Direction.** Inbound busier in the morning, outbound in the evening | **Hit.** 80% of 359 radial route pairs in the morning, 78% in the evening |
+| **Week to week.** Two different weeks of the month, each alone | 76% of rider-weighted cells keep their level; load correlation 0.78. A held-out week lands inside our range in 63% of cells |
+| **Published DTC bus-km per day** against 501,000 | **Hit.** Model 496,158 |
+| **Published load factor** band 0.78–0.89 | **Miss.** Model 0.54, below the band. See the bracket below |
+| **Ten researched busy corridors** | 10 of 10 by the rule we wrote down, **but chance alone gives 10.0 of 10**, so that proves little. The honest readings: 19% of corridor stretches sit in the top decile (chance 10%), and 7 of 10 hit with both ends on the corridor |
+
+<details>
+<summary><b>The load-factor miss, explained (it matters)</b></summary>
+
+<br>
+
+Published ridership, the trips GPS shows actually ran, and a bus's crush capacity do not fit together. With the model as it stands (no bus ever carries more than its crush load; riders no bus can carry are left unplaced) the weekday load factor is **0.54**. With the capacity bound off and all published ridership placed it is **1.70**. The published band of 0.78–0.89 lies between the two. We did not tune anything to close the gap; on routes where the capacity bound binds, **the crowding shown is a conservative, lower estimate.**
+
+<p align="center">
+  <img src="docs/assets/fig-load-factor-bracket.svg" alt="The model's load factor and the full-allocation load factor on either side of the published band" width="760">
+</p>
+
+</details>
+
+<details>
+<summary><b>More figures: the corridor check, trips that ran, travel-time factor</b></summary>
+
+<br>
+
+<p align="center">
+  <img src="docs/assets/fig-corridor-check.svg" alt="Corridor check against its chance baseline" width="720"><br><br>
+  <img src="docs/assets/fig-trips-ran-by-hour.svg" alt="Share of scheduled trips that ran, by hour, from GPS" width="720"><br><br>
+  <img src="docs/assets/fig-travel-time-factor.svg" alt="Observed run time against the timetable by hour, DTC and cluster" width="720">
+</p>
+
+</details>
+
+The full account, with method, assumptions, sensitivity tests and the checks that did not come out our way, is in the **[technical note](docs/TECHNICAL_NOTE.md)** and the generated **[validation report](data/processed/validation_report.md)**.
+
+## Limits, stated plainly
+
+- **Most levels are a Rough guess.** Only 4.7% of scheduled bus-km rests on many tickets; 89% is a rough guess and 6.4% is No data. The card says which one it is.
+- **App tickets are about 1 in 44 riders.** We scale them up, never to more than a bus can hold. Women riding free, pass holders and cash riders are not in this data, so buses can be fuller than shown.
+- **Capped routes read low.** On 1,257 routes the scale is held to bus capacity; 59% of published DTC ridership and 73% of cluster ridership could not be placed.
+- **One month.** October 2026, which includes a festival season; weekends are thin.
+- **Timetables are templates.** The official run times are a straight-line template, so we take run times from ticket pairs. GPS runs about 1.08 to 1.24 times that clock on weekdays; we state it and do not apply it.
+- **GPS is a check, not ground truth.** About 38% of scheduled trips show up as having run; we use that to count buses.
+- **No live arrivals, no live load per bus.** Levels are what is *usually* so at that stretch and hour.
+
+## Quick start
+
+Python 3.12 and [`uv`](https://docs.astral.sh/uv/). The raw ticket and GTFS files are not in the repository (size and terms of use); the small GPS aggregate that the pipeline needs is.
+
+1. **Clone the repository.**
+   ```bash
+   git clone https://github.com/ThatAnacondaGuy/Delhi-Bus-Crowd-Planner && cd Delhi-Bus-Crowd-Planner
+   ```
+2. **Install the pinned packages.**
+   ```bash
+   uv venv --python 3.12 && source .venv/bin/activate
+   uv pip install -r requirements.lock
+   ```
+3. **Place the data** from Transport Stack: `October-Delhi.csv` in `data/raw/` and the GTFS folder `delhi_buses_static_gtfs_v1/` in `data/raw/gtfs/`.
+4. **Run the pipeline** (resumable: finished stages are skipped).
+   ```bash
+   python -m src.pipeline.run
+   ```
+5. **Start the planner**, then open <http://127.0.0.1:8000> for riders and <http://127.0.0.1:8000/operator> for operators.
+   ```bash
+   uvicorn src.api.main:app
+   ```
+
+Tests: `python -m pytest`. Health check: `/v1/health` reports the data version and what is loaded. Interactive API docs: `/docs`.
+
+## Repository map
 
 ```text
-delhi-crowd-planner/
-├── .gitignore                                      # Comprehensive gitignore (excludes large data/caches)
-├── requirements.txt                                # Production dependencies (pure Python / no heavy bloat)
-├── README.md                                       # Project overview, architecture & quickstart guide
-├── PROGRESS_REPORT.md                              # Detailed sprint log & verification traceability
-├── data/
-│   ├── raw/
-│   │   ├── .gitkeep                                # Git keep for raw data folder
-│   │   ├── October-Delhi.csv                       # [External] 2.56M ETM ticketing transactions
-│   │   └── gtfs/delhi_buses_static_gtfs_v1/        # [External] Official Delhi GTFS static feed
-│   │       ├── routes.txt, stops.txt, trips.txt, stop_times.txt, shapes.txt
-│   └── processed/
-│       ├── sprint0_profile.json                    # Dataset profiling metrics & schema findings
-│       ├── sprint1_resolution_report.json          # Entity resolution & fuzzy match benchmarks
-│       ├── sprint2_validation_report.json          # Crowding validation & diurnal distributions
-│       ├── sprint3_routing_report.json             # McRAPTOR benchmark corridors & latency report
-│       ├── route_headways.json                     # Empirical route headways across 5 diurnal windows
-│       ├── canonical_route_stops.parquet           # [Generated] Canonical stops (83,435 stops, 2,574 routes)
-│       ├── resolved_tickets.parquet                # [Generated] Resolved forward tickets (2.57M pax)
-│       ├── segment_crowding.parquet                # [Generated] 1.2M segment-time-slot crowding index
-│       └── route_segment_shapes.pkl                # [Generated] 80,859 road-following segment geometries
-├── docs/
-│   ├── PROPOSAL.md                                 # Phase 1 Hackathon Proposal (CSM / Chartr / JICA)
-│   ├── TECHNICAL_NOTE.md                           # Comprehensive mathematical & validation note
-│   └── DEMO_VIDEO_SCRIPT.md                        # 5-minute screencast walkthrough & demo script
-├── frontend/
-│   └── index.html                                  # Single-page transit UI (Leaflet + Tailwind + Chart.js)
-└── src/
-    ├── __init__.py
-    ├── api/
-    │   ├── __init__.py
-    │   ├── main.py                                 # FastAPI application, CORS & lifespan router manager
-    │   └── test_api.py                             # 9 end-to-end integration test cases
-    ├── pipeline/
-    │   ├── __init__.py
-    │   ├── sprint0_profile.py                      # Out-of-core DuckDB dataset profiling
-    │   ├── sprint1_entity_resolution.py            # Route-scoped RapidFuzz stop resolver
-    │   └── sprint2_crowding_model.py               # Vectorized difference-array crowding engine
-    └── routing/
-        ├── __init__.py
-        ├── mcraptor.py                             # McRAPTOR multi-criteria Pareto router
-        └── verify_sprint3.py                       # Routing benchmark validation suite
+src/pipeline/    the eight stages: clean, resolve, network, gps, loads, operator, validate, render
+src/routing/     the planner: frequency-based round search, option roles, headline rules
+src/api/         FastAPI service, /v1/plan, /v1/crowding, /v1/corridors, /v1/operator/trips
+frontend/        commuter screen (English and Hindi) and operator view; no build step
+validation/      expectations.yaml, written down before the first full run
+docs/            technical note, proposal, figure and diagram scripts, docs/assets pictures
+deploy/          bundle builder for the demo (aggregates only)
+data/processed/  the small reports that are committed: validation report, coverage, data quality
+data/gps_aggregates/  the committed GPS aggregate (trips that ran, by route and hour)
+tests/           unit, golden-journey and documentation tests
 ```
 
----
+<sub>README, technical note and proposal are rendered from `*.tmpl.md` templates by the last pipeline stage, so every number in them comes from the run that produced the tables (run `20261123-1927-10faec86`, code `43fe4e2`, finished 2026-11-23 19:27 IST).</sub>
 
-## 🚀 Quickstart & Setup Guide
+## Data and credit
 
-### 1. Prerequisites
-- **Python 3.10, 3.11, or 3.12** (64-bit recommended)
-- **Git**
+**Data: Transport Stack / IIIT Delhi; ticketing from ONDC e-ticketing.**
 
-### 2. Clone Repository & Setup Virtual Environment
-```bash
-# Clone the repository
-git clone https://github.com/your-username/delhi-crowd-planner.git
-cd delhi-crowd-planner
+| Source | What we use | In this repository |
+|---|---|---|
+| ONDC e-ticketing, October 2026 | 2,559,899 tickets, 2,753,606 passengers, 31 days, 2,259 route strings | No. Only aggregates |
+| Static GTFS, DTC and cluster | 2,574 routes, stops, timetables, shapes | No |
+| DTC bus GPS, October 2026 | Share of scheduled trips that ran, and run-time cross-check, from 10 sample days | Aggregate only |
+| Economic Survey of Delhi 2025-26 and CAG audit | Published ridership, bus-km and load factor, used as outside checks | Cited in the technical note |
 
-# Create virtual environment
-python -m venv venv
+No ticket-level or vehicle-level data is committed or served; every response is an aggregate by route, stretch, corridor or scheduled trip.
 
-# Activate virtual environment
-# Windows (PowerShell):
-.\venv\Scripts\Activate.ps1
-# Windows (cmd):
-.\venv\Scripts\activate.bat
-# Linux / macOS:
-source venv/bin/activate
+## Phase 2
 
-# Install clean production dependencies
-pip install -r requirements.txt
-```
+The aim is the same product with the evidence getting stronger: more months of tickets, so more cells rest on many tickets; a way to find out how many people really ride (a small on-bus count on a few corridors, if the transport department agrees); GPS stop times at scale to link a ticket to its exact trip; live arrival times; full Hindi stop search; and a hosted version that can serve many riders. The technical note lists them with the reason for each.
 
-### 3. Data File Placement
-Place the hackathon raw datasets into `data/raw/` as follows:
-- `data/raw/October-Delhi.csv` (2.56M ETM ticketing transactions, ~290 MB)
-- `data/raw/gtfs/delhi_buses_static_gtfs_v1/` containing:
-  - `agency.txt`, `calendar.txt`, `feed_info.txt`, `routes.txt`, `shapes.txt`, `stops.txt`, `stop_times.txt`, `trips.txt`
+## Team
 
----
+**Aniket Ingale** and **Ashish Maurya (Ash)**, Pune. Transport Stack Hackathon 2026, Problem 2: a crowdedness-aware journey planner for Delhi buses.
 
-## ⚙️ Sequential Pipeline Execution (Sprints 0–3)
-
-Pre-computed summary reports (`*.json`) are tracked directly in Git. To run the full data pipeline from scratch:
-
-```bash
-# Step 0: Ingest & Profile raw datasets (ETM + GTFS)
-python src/pipeline/sprint0_profile.py
-
-# Step 1: Route-Scoped Entity Resolution & Canonical Stop Mapping (~50s)
-python src/pipeline/sprint1_entity_resolution.py
-
-# Step 2: Passenger Flow Reconstruction & Load Modeling (~15s)
-python src/pipeline/sprint2_crowding_model.py
-
-# Step 3: Verify Multi-Criteria McRAPTOR Router against Corridors (~5s)
-python src/routing/verify_sprint3.py
-```
-
----
-
-## 🧪 Test Suite & Validation
-
-Run the automated integration test suite covering all 9 API endpoints, spatial search, and routing contracts:
-
-```bash
-python -m pytest src/api/test_api.py -v
-```
-
-**Expected output:**
-```text
-============================= test session starts =============================
-collected 9 items
-
-src/api/test_api.py::test_get_frontend_html PASSED                       [ 11%]
-src/api/test_api.py::test_api_health PASSED                              [ 22%]
-src/api/test_api.py::test_stops_search_default_hubs PASSED               [ 33%]
-src/api/test_api.py::test_stops_search_query PASSED                      [ 44%]
-src/api/test_api.py::test_plan_journey_peak_balanced PASSED              [ 55%]
-src/api/test_api.py::test_plan_journey_offpeak_least_crowded PASSED      [ 66%]
-src/api/test_api.py::test_validation_metrics PASSED                      [ 77%]
-src/api/test_api.py::test_route_profile PASSED                           [ 88%]
-src/api/test_api.py::test_invalid_stop_plan PASSED                       [100%]
-
-======================== 9 passed in 11.35s ========================
-```
-
----
-
-## 🌐 Launching the Live Web Application
-
-Start the FastAPI backend with uvicorn:
-
-```bash
-uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-Then navigate to:
-- **Interactive Transit Application**: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
-- **Swagger Interactive API Documentation**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- **ReDoc Interactive Documentation**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
-
----
-
-## 🔌 API Reference
-
-| Method | Endpoint | Description |
-| :---: | :--- | :--- |
-| `GET` | `/` | Serves the interactive Leaflet + Chart.js journey planner UI |
-| `GET` | `/api/health` | Router readiness, stop counts (6,862), route counts (2,574), and transfer edge counts (23,354) |
-| `GET` | `/api/stops/search?q={query}&limit=12` | Instant prefix, substring, and fuzzy stop search. Returns 10 major transit hubs when `q` is empty |
-| `POST` | `/api/plan` | Evaluates Pareto journey options (`origin_stop_id`, `dest_stop_id`, `departure_time`, `day_type`, `beta`) |
-| `GET` | `/api/routes/{route_short_name}/profile` | Stop-by-stop coordinate sequence and crowding curve for a specific line, day type, and time slot |
-| `GET` | `/api/validation/metrics` | Model validation KPIs, diurnal peak/off-peak windows, and tidal asymmetry comparisons |
-
-### Example Journey Plan Request
-```bash
-curl -X POST "http://127.0.0.1:8000/api/plan" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "origin_stop_id": "2560",
-       "dest_stop_id": "2944",
-       "departure_time": "09:00",
-       "day_type": "weekday",
-       "beta": 0.6
-     }'
-```
-
----
-
-## 💡 The Pareto Commuter Trade-Off: A Real Example
-
-When commuting from **Nehru Place to Dhaula Kuan** at 09:00 AM on a weekday:
-- **Fastest Option ($\beta = 0.0$)**: Non-AC line `567AUP` takes **41.4 min** with an average crowding score of **0.131**.
-- **Least Crowded Option ($\beta = 1.8$)**: AC line `724EXTDOWN` takes **41.5 min** with an average crowding score of **0.088**.
-- **Commuter Insight**: Commuters trade **only 6 seconds of travel time** to achieve a **33% reduction in crowding** inside an air-conditioned bus!
-
----
-
-## 📑 Submission Documentation Links
-
-- 📘 **[Executive Proposal (`docs/PROPOSAL.md`)](docs/PROPOSAL.md)**: Problem framing, system architecture, IIIT-Delhi CSM / Chartr / JICA value proposition, and Phase 2 streaming roadmap.
-- 🔬 **[Technical Note (`docs/TECHNICAL_NOTE.md`)](docs/TECHNICAL_NOTE.md)**: Full mathematical formulation, dual-source supply calibration equations, diurnal validation tables, and corridor benchmarks.
-- 🎬 **[Demo Video Script (`docs/DEMO_VIDEO_SCRIPT.md`)](docs/DEMO_VIDEO_SCRIPT.md)**: 5-minute timed walkthrough script with exact timestamps and on-screen cues.
-- 📈 **[Engineering Progress Report (`PROGRESS_REPORT.md`)](PROGRESS_REPORT.md)**: Living engineering log documenting Sprints 0 through 5 and architectural decisions (ADRs).
-
----
-
-## 👥 Contributors & Acknowledgements
-- **Team Antigravity** — Transport Stack Hackathon 2026 (Phase 1, Problem 2)
-- Built with datasets provided by **Centre for Sustainable Mobility (CSM), IIIT-Delhi**, **Delhi Transport Corporation (DTC)**, and **Chartr / ONDC**.
+<sub>MIT licence. Built with Python, DuckDB, pandas, FastAPI and plain JavaScript.</sub>

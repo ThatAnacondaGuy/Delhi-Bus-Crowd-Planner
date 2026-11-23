@@ -1,0 +1,87 @@
+<!-- Rendered to PROPOSAL.md by `python -m src.pipeline.run --until render`; PROPOSAL.pdf is made from it by `python docs/make_proposal_pdf.py`. Edit this template, never the .md: every number is a placeholder filled from the pipeline's own output. -->
+<div class="band">
+
+# Delhi Bus Crowding Planner
+
+<p class="tag">See how crowded each stretch of your Delhi bus trip usually is, before you board.</p>
+
+<p class="meta">Transport Stack Hackathon 2026 · Phase 1 · Problem 2: a crowdedness-aware journey planner · Aniket Ingale and Ashish Maurya (Ash), Pune</p>
+
+</div>
+
+## The problem
+
+Delhi riders choose buses by travel time alone, because no journey planner knows how full a bus will be. The fastest bus may be the one that is usually packed at 18:00, and leaving a few minutes later may mean a seat. Nobody counts people on Delhi buses stretch by stretch, so we estimate it from the one dataset that is recorded: **2,559,899 ONDC app tickets from October 2026**, matched to the official timetable and to GPS, scaled up to everyone on board, and tested against everything we can compare it with. The brief says a simple planner with a sound crowding model beats a polished planner with a weak one. We built the model and its evidence first, then a clear screen.
+
+## What we built
+
+<div class="gallery">
+
+| <img src="assets/app-commuter-cp-to-anand-vihar.png" alt="Commuter screen with a Usually crowded chip and the crowded stretch named"> | <img src="assets/app-commuter-leave-later-mandi-house.png" alt="Commuter screen with a Leave later card"> | <img src="assets/app-operator-view.png" alt="Operator view: ranked extra trips and corridor map"> |
+|:-:|:-:|:-:|
+| **For a rider.** Three options per trip: Fastest, Less crowded, Leave later. Each has a level (Usually seats, Usually standing, Usually crowded or No data), the crowded stretch by name, and how sure we are. English and Hindi. | **Leave later.** Offered only when a later bus is really in a better level and still runs. A *Why?* sheet shows the people-on-board range against the bus's seats and rated total. | **For an operator.** The extra trips that take the most people out of crowded buses, a corridor map with a time slider and a route heat strip, with CSV export. |
+
+</div>
+
+- **Crowding tables** for every route, direction, stretch and half hour, weekday and weekend, with an evidence state on every cell: *Based on many tickets*, *Rough guess* or *No data*. 3,384,288 rows, rebuilt by one command.
+- **Honest by design.** No value is invented; a stretch without evidence is *No data*, never shown as comfortable; every number in our documents is read from the pipeline's own output.
+
+## How it works
+
+<div class="diagram">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/architecture-dark.svg">
+  <img src="assets/architecture.svg" alt="System diagram: three inputs, the pipeline, outputs, the planner and API, and the commuter screen, operator view and live demo">
+</picture>
+
+</div>
+
+Each ticket says where a rider boarded and got off. We spread it over the stretches travelled, at the time the bus was there, add up everyone per stretch and half hour, scale the app tickets up to all riders, divide by the buses that really ran (from GPS) and compare people on board with the bus's seats and rated total. Seats, rated total and crush load are set by bus type: 12 m AC 35/63/100, 9 m DEVI 23/36/42.
+
+## Evidence, with the misses
+
+**No field count was possible**: we are in Pune and no one has counted people on Delhi buses. So we wrote our expectations down before the first full run and report every hit and every miss.
+
+<div class="tiles">
+
+| **94.5%** | **1 in 44** | **76%** | **496,158** |
+|:-:|:-:|:-:|:-:|
+| of 2,559,899 tickets resolved to a route and stops | riders are in the app data; we scale up, never above what a bus holds | of cells keep their level between two different weeks | DTC bus-km a day modelled; 501,000 published |
+
+</div>
+
+| Check written down in advance | Result |
+|---|---|
+| Morning and evening peaks | **Hit**: busiest hours 09:00 and 19:00 |
+| Weekends lower, flatter, later peak | **Hit** on all three |
+| Inbound busier in the morning, outbound in the evening | **Hit**: 80% and 78% of 359 route pairs |
+| Published DTC bus-km | **Hit**: within the band, and GPS independently agrees on how much service ran |
+| Published fleet load factor (0.78–0.89) | **Miss**: 0.54. Published ridership, GPS trips and bus capacity do not fit together, so on capped routes crowding shown is a lower estimate |
+| Ten researched busy corridors | 10 of 10 by our rule, but chance alone gives 10.0, so we also report: 19% of corridor stretches are in the top decile (chance 10%); 7 of 10 hit with both ends on the corridor |
+| Week to week, two different weeks | 76% unchanged; a held-out week lands in our range in 63% of cells |
+
+## Limits, stated plainly
+
+- **Most levels are a Rough guess:** only 4.7% of bus-km rests on many tickets, 89% is a rough guess and 6.4% is No data. The card says which.
+- **App tickets only.** Women riding free, pass holders and cash riders are not in the data, so buses can be fuller than shown.
+- **Capped routes read low:** on 1,257 routes the scale is held to bus capacity; 59% of DTC and 73% of cluster published ridership could not be placed.
+- **One month**, a festival-season October. Timetable times are a template, so run times come from ticket pairs; GPS runs about 1.08–1.24 times that clock on weekdays and we say so instead of applying it.
+
+## Phase 2
+
+An on-bus count on a few corridors to replace our one unverifiable step, the scale-up from app riders to everyone; more months of tickets so more cells rest on many tickets; GPS stop times to link a ticket to its exact trip; free-ride and pass counts by route if the operator can share them; live arrivals and load; full Hindi stop search; and a hosted service for many riders. The technical note gives the reason for each.
+
+## Links and credit
+
+<div class="links">
+
+| | |
+|---|---|
+| **Live demo** | <https://huggingface.co/spaces/ThatAnacondaGuy/delhi-bus-crowd-planner> (precomputed answers for well-known places and times; the full planner runs locally) |
+| **Code, README, technical note** | <https://github.com/ThatAnacondaGuy/Delhi-Bus-Crowd-Planner> |
+| **Team** | Aniket Ingale and Ashish Maurya (Ash) |
+
+</div>
+
+<p class="credit">Data: Transport Stack / IIIT Delhi; ticketing from ONDC e-ticketing. Aggregates only: no ticket-level or vehicle-level data is published. Figures rendered from run 20261123-1927-10faec86, code 43fe4e2, 2026-11-23.</p>

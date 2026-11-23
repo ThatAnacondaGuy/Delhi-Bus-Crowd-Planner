@@ -16,7 +16,7 @@ This is a check of the model against things we can compare it with. No field cou
 - Routes whose last stretches depend on the alighting correction: 662.
 - Coverage: 93.6% of scheduled bus-km has a commuter-facing level, 4.7% rests on many tickets.
 - GPS layer: in: bus supply is scheduled buses times the share that ran (GPS, ten sample days); the stop-time corroboration is not built and is not counted as a miss.
-- Run time of the validation stage: 44 s.
+- Run time of the validation stage: 39 s.
 
 ## A. Gates (a failure stops the run)
 
