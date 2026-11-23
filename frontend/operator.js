@@ -4,6 +4,8 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+  // data.js: the browser's own fetch in API mode, the precomputed files in the static demo
+  const CD = window.CrowdData || { static: false, fetch: window.fetch.bind(window), link: (u) => u };
   const NUM = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
   const DEC = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -86,7 +88,7 @@
   const nice = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : "");
 
   async function getJSON(url) {
-    const res = await fetch(url);
+    const res = await CD.fetch(url);
     if (!res.ok) {
       let msg = `${res.status}`;
       try { const b = await res.json(); if (b && typeof b.detail === "string") msg = b.detail; } catch (e) { /* keep status */ }
@@ -117,7 +119,7 @@
 
   function csvHref() {
     const q = new URLSearchParams({ day: state.day, operator: state.operator, limit: String(CSV_LIMIT) });
-    return `/v1/operator/trips.csv?${q.toString()}`;
+    return CD.link(`/v1/operator/trips.csv?${q.toString()}`);
   }
 
   function renderCsv() {
@@ -125,7 +127,9 @@
     a.href = csvHref();
     a.setAttribute("download", `operator_trips_${state.day}.csv`);
     a.textContent = "Download CSV";
-    a.title = `Top ${NUM.format(CSV_LIMIT)} extra trips for ${OPERATORS[state.operator]} on a ${DAY_WORD[state.day]}`;
+    a.title = CD.static
+      ? `The ranked extra trips for both operators on a ${DAY_WORD[state.day]}`
+      : `Top ${NUM.format(CSV_LIMIT)} extra trips for ${OPERATORS[state.operator]} on a ${DAY_WORD[state.day]}`;
   }
 
   function renderTrips() {
@@ -308,7 +312,7 @@
       await ensureMap();
       if (id !== state.seq.map) return;
       const r = drawCorridors(L, fc);
-      $("map-sub").textContent = `${NUM.format(r.drawn)} corridor stretches at ${start} on a ${DAY_WORD[state.day]}, the ones with the most crowded rider-minutes first. Thicker lines are more crowded.`;
+      $("map-sub").textContent = `${NUM.format(r.drawn)} corridor stretches at ${start} on a ${DAY_WORD[state.day]}, the ones with the most crowded rider-minutes first. Thicker lines are more crowded.${CD.static ? " The demo includes only the busiest stretches." : ""}`;
     } catch (e) {
       if (id !== state.seq.map) return;
       $("map-sub").textContent = `The corridor map could not load: ${e.message}.`;
@@ -510,6 +514,7 @@
   }
 
   function init() {
+    if (CD.static) CD.banner($("demo-banner"), "operator").catch(() => { /* the banner is optional */ });
     document.querySelectorAll("[data-day]").forEach((b) => b.addEventListener("click", () => setDay(b.dataset.day)));
     document.querySelectorAll("[data-operator]").forEach((b) => b.addEventListener("click", () => setOperator(b.dataset.operator)));
     document.querySelectorAll("[data-basis]").forEach((b) => b.addEventListener("click", () => setBasis(b.dataset.basis)));

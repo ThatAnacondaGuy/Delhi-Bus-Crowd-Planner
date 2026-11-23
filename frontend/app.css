@@ -33,7 +33,7 @@ body {
 
 body[data-lang="hi"] { font-family: "Noto Sans Devanagari", system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.55; }
 
-button, input { font: inherit; color: inherit; }
+button, input, select { font: inherit; color: inherit; }
 
 button { cursor: pointer; }
 
@@ -102,7 +102,8 @@ main { max-width: 1120px; margin: 0 auto; padding: 0 var(--gutter) 24px; }
 
 .field { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
 
-.field input {
+.field input,
+.field select {
   min-height: 48px;
   padding: 8px 12px;
   background: #fff;
@@ -360,3 +361,15 @@ main { max-width: 1120px; margin: 0 auto; padding: 0 var(--gutter) 24px; }
   .sheet-panel { border-radius: 18px; }
   .presets { margin-inline: 0; padding-inline: 0; flex-wrap: wrap; overflow: visible; }
 }
+
+/* ---------- static demo banner (shown only when the build's config.js switches the demo on) ---------- */
+
+.demo-banner {
+  padding: 8px var(--gutter);
+  background: #e6edf4;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.demo-banner a { color: var(--accent); font-weight: 600; }

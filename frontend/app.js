@@ -90,6 +90,9 @@
 
   const state = { lang: "en", q: null, data: null, seat: false, req: 0, oneIn: null, opener: null, map: null };
   const $ = (id) => document.getElementById(id);
+  // data.js: the browser's own fetch in API mode, the precomputed files in the static demo
+  const CD = window.CrowdData || { static: false, fetch: window.fetch.bind(window) };
+  const api = CD.fetch;
 
   function h(tag, cls, ...kids) {
     const el = document.createElement(tag);
@@ -323,6 +326,7 @@
   function fillForm(q) {
     $("from").value = q.from;
     $("to").value = q.to;
+    if (CD.static) { $("depart").value = `${q.day}|${q.depart}`; return; }
     $("depart").value = q.depart;
     setDay(q.day);
   }
@@ -362,7 +366,7 @@
     setStatus(tx("finding"));
     try {
       const params = new URLSearchParams({ from: q.from, to: q.to, depart: q.depart, day: q.day });
-      const res = await fetch("/v1/plan?" + params.toString());
+      const res = await api("/v1/plan?" + params.toString());
       if (id !== state.req) return;
       if (res.status === 404) {
         const body = await res.json().catch(() => ({}));
@@ -416,7 +420,7 @@
     if (q.length < 2) return;
     suggestTimer = setTimeout(async () => {
       try {
-        const res = await fetch("/v1/places/search?" + new URLSearchParams({ q, limit: "8" }).toString());
+        const res = await api("/v1/places/search?" + new URLSearchParams({ q, limit: "8" }).toString());
         if (!res.ok) return;
         const body = await res.json();
         $("places").replaceChildren(...(body.places || []).map((p) => {
@@ -428,9 +432,16 @@
     }, 200);
   }
 
+  // the demo's departure menu carries the day with the time ("weekday|18:00"); the live form has a time box and a day switch
+  function formTime() {
+    if (!CD.static) return { depart: $("depart").value, day: currentDay() };
+    const [day, depart] = $("depart").value.split("|");
+    return { depart, day };
+  }
+
   function submitForm(ev) {
     ev.preventDefault();
-    const q = { from: $("from").value.trim(), to: $("to").value.trim(), depart: $("depart").value, day: currentDay() };
+    const q = { from: $("from").value.trim(), to: $("to").value.trim(), ...formTime() };
     if (!q.from || !q.to || !/^([01]?\d|2[0-3]):[0-5]\d$/.test(q.depart)) {
       showProblem(tx("badInput"));
       return;
@@ -568,6 +579,45 @@
     setTimeout(() => map.invalidateSize(), 50);
   }
 
+  // ---------------------------------------------------------------- static demo: menus instead of typing
+
+  function option(value, label) {
+    const o = document.createElement("option");
+    o.value = value;
+    o.textContent = label;
+    return o;
+  }
+
+  function slotLabels() {
+    for (const o of document.querySelectorAll("#depart option")) {
+      const [day, depart] = o.value.split("|");
+      o.textContent = `${dayLabel(day)} ${depart}`;
+    }
+  }
+
+  // swap the two place boxes and the time box for menus built from places.json; the day switch is no longer needed
+  async function setupStatic() {
+    const meta = await CD.meta();
+    for (const id of ["from", "to"]) {
+      const sel = document.createElement("select");
+      sel.id = id;
+      sel.name = id;
+      sel.required = true;
+      sel.append(...(meta.places || []).map((p) => option(p.name, p.name)));
+      $(id).replaceWith(sel);
+    }
+    const when = document.createElement("select");
+    when.id = "depart";
+    when.name = "depart";
+    when.required = true;
+    when.append(...(meta.slots || []).map((sl) => option(`${sl.day}|${sl.depart}`, "")));
+    $("depart").replaceWith(when);
+    document.querySelector(".seg").hidden = true;
+    $("places").remove();
+    slotLabels();
+    await CD.banner($("demo-banner"), "commuter").catch(() => { /* the banner is optional */ });
+  }
+
   // ---------------------------------------------------------------- language
 
   function applyLang(lang) {
@@ -578,6 +628,7 @@
     document.querySelectorAll("[data-t]").forEach((el) => { el.textContent = tx(el.dataset.t); });
     document.querySelectorAll(".lang-btn").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
     $("sheet-close").setAttribute("aria-label", tx("close"));
+    if (CD.static) slotLabels();
     updateSummary();
     buildPresets();
     renderResults();
@@ -587,7 +638,7 @@
 
   async function loadHealth() {
     try {
-      const res = await fetch("/v1/health");
+      const res = await api("/v1/health");
       if (!res.ok) return;
       const body = await res.json();
       const n = body.app_riders_one_in;
@@ -604,13 +655,18 @@
     return null;
   }
 
-  function init() {
+  async function init() {
+    if (CD.static) {
+      try { await setupStatic(); } catch (e) { showProblem(tx("offline")); return; }
+    }
     document.querySelectorAll(".lang-btn").forEach((b) => b.addEventListener("click", () => applyLang(b.dataset.lang)));
     document.querySelectorAll(".seg-btn").forEach((b) => b.addEventListener("click", () => setDay(b.dataset.day)));
     $("summary").addEventListener("click", toggleForm);
     $("form").addEventListener("submit", submitForm);
-    $("from").addEventListener("input", (e) => suggestPlaces(e.target));
-    $("to").addEventListener("input", (e) => suggestPlaces(e.target));
+    if (!CD.static) {
+      $("from").addEventListener("input", (e) => suggestPlaces(e.target));
+      $("to").addEventListener("input", (e) => suggestPlaces(e.target));
+    }
     $("seat").addEventListener("click", () => {
       state.seat = !state.seat;
       $("seat").setAttribute("aria-pressed", String(state.seat));
