@@ -135,12 +135,19 @@
   }
 
   // the slim banner at the top of each page; every number in it comes from the data files
-  async function banner(box, kind) {
+  async function banner(box, kind, lang) {
     if (!box) return;
     const meta = await once("places.json");
     const gh = h("a", "", "GitHub");
     gh.href = cfg.github || "#";
     gh.rel = "noopener";
+    if (lang === "hi" && kind !== "operator") {
+      box.lang = "hi";
+      box.replaceChildren(`लाइव डेमो: ${(meta.places || []).length} जगहों के लिए ${(meta.slots || []).length} निकलने के समयों पर तैयार जवाब, उसी मॉडल से निकाले गए। पूरा प्लानर (कोई भी जगह, कोई भी समय) कोड से चलता है, जो यहाँ है: `, gh, "।");
+      box.hidden = false;
+      return;
+    }
+    box.removeAttribute("lang");
     const lead = kind === "operator"
       ? "Live demo: ready-made tables, maps and route strips from the same model. The full planner (any place, any time) runs from the code on "
       : `Live demo: ready-made answers for ${(meta.places || []).length} places at ${(meta.slots || []).length} departure times, computed by the same model. The full planner (any place, any time) runs from the code on `;

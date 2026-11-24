@@ -190,3 +190,57 @@ def test_operator_legends_pair_words_with_colour():
         assert word in js, word
     assert "aria-label" in js                                        # heat-strip cells carry a text label
     assert "buses that ran" in (js + html).lower() and "estimate" in js.lower()
+
+
+# ---------------------------------------------------------------- polish pass (Task 17b)
+
+def test_first_screen_explains_itself():
+    html, js, css = text("index.html"), text("app.js"), text("app.css")
+    assert 'id="tagline"' in html and 'data-t="tagline"' in html and 'id="key"' in html
+    assert "tagline:" in js and "buildKey" in js
+    assert ".key" in css
+    # the key reuses the same level table as the chips, so word + dots + colour cannot drift apart
+    assert re.search(r"function buildKey[^}]*pick\(L\)", js, re.S) or "pick(level(" in js
+
+
+def test_cards_have_route_pills_callout_and_focus_ring():
+    js, css = text("app.js"), text("app.css")
+    assert "route-pill" in js and ".route-pill" in css
+    assert "callout" in js and ".callout" in css
+    assert css.count(":focus-visible") >= 2
+
+
+def test_motion_is_gentle_and_switched_off_for_reduced_motion():
+    css = text("app.css")
+    assert "@keyframes" in css
+    m = re.search(r"@media \(prefers-reduced-motion: reduce\)\s*\{(.*?)\n\}", css, re.S)
+    assert m and "animation: none" in m.group(1) and "transition" in m.group(1)
+    for ms in re.findall(r"animation:[^;]*?(\d+)ms", css):
+        assert 150 <= int(ms) <= 400, ms
+
+
+def test_map_has_stop_markers_and_a_marker_legend():
+    js = text("app.js")
+    for word in ("board", "change", "alight"):
+        assert word in js
+    assert "divIcon" in js and "maxZoom" in js and ".pin" in text("app.css")
+
+
+def test_hindi_for_why_lead_flag_words_and_demo_banner():
+    js = text("app.js")
+    assert "FLAG_WORDS_HI" in js and "WOMEN_SENTENCE_HI" in js
+    for hi in ("ऐप टिकटों पर आधारित", "भरी बस", "महिला"):
+        assert hi in js
+    data = (FRONT / "data.js").read_text(encoding="utf-8")
+    assert "लाइव डेमो" in data and "lang" in data
+    assert "banner(" in js and re.search(r"banner\(.*state\.lang", js)
+
+
+def test_operator_tiles_slider_ticks_wrapped_notes_and_sticky_header():
+    html, js, css = optext("operator.html"), optext("operator.js"), (FRONT / "operator.css").read_text(encoding="utf-8")
+    assert 'id="tiles"' in html and "renderTiles" in js
+    assert "reduce" in js                                  # the tiles are sums over the rows already loaded
+    assert re.search(r"\.op-table thead th\s*\{[^}]*position:\s*sticky", css)
+    assert re.search(r"\.op-flags\s*\{[^}]*min-width:\s*(?:1[5-9]|2\d)\dpx", css) and "white-space: normal" in css
+    assert 'id="ticks"' in html and "renderTicks" in js
+    assert "prefers-reduced-motion" in css or "transition" not in css

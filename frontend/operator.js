@@ -132,7 +132,28 @@
       : `Top ${NUM.format(CSV_LIMIT)} extra trips for ${OPERATORS[state.operator]} on a ${DAY_WORD[state.day]}`;
   }
 
+  // Headline tiles: sums over the rows the table is showing, so they always match it (nothing typed in)
+  function renderTiles() {
+    const box = $("tiles");
+    const rows = state.trips[state.operator] || [];
+    box.hidden = !rows.length;
+    if (!rows.length) { box.replaceChildren(); return; }
+    const sum = (k) => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+    const routes = new Set(rows.map((r) => r.route_id));
+    const scaled = new Set(rows.filter((r) => String(r.flags || "").split(",").includes("scaled_to_capacity")).map((r) => r.route_id));
+    const who = `${OPERATORS[state.operator]}, ${DAY_WORD[state.day]}`;
+    const tile = (value, label, note) => h("div", "op-tile", h("p", "op-tile-num", value), h("p", "op-tile-label", label), h("p", "op-tile-note", note));
+    box.replaceChildren(
+      tile(NUM.format(sum("crowded_rider_min_removed")), "Crowded rider-minutes removed",
+        `If one extra bus ran on each of the ${NUM.format(rows.length)} departures listed (${who}).`),
+      tile(NUM.format(sum("riders_moved_down")), "Riders moved down a level",
+        "Riders who would go from crowded to standing, or from standing to seats."),
+      tile(`${NUM.format(scaled.size)} of ${NUM.format(routes.size)}`, "Listed routes scaled to bus capacity",
+        "Counts on these routes were scaled down to fit what their buses can carry."));
+  }
+
   function renderTrips() {
+    renderTiles();
     const rows = state.trips[state.operator] || [];
     $("trips-caption").textContent = `Extra trips that help most: ${OPERATORS[state.operator]}, ${DAY_WORD[state.day]}`;
     $("trips-sub").textContent = `One extra bus on each of these departures would take the most people out of crowded buses. Top ${TOP_N} for ${OPERATORS[state.operator]} on a ${DAY_WORD[state.day]}.`;
@@ -228,7 +249,19 @@
     legendInto($("map-legend"), b.bins.concat([{ lv: "no_data", label: "No data" }]));
   }
 
+  // readable time labels under the slider: every six hours, placed where the thumb would sit
+  function renderTicks() {
+    const n = nWin();
+    const idx = [0, 6, 12, 18].map((hr) => Math.round((hr * 60) / STEP[state.day])).concat([n - 1]);
+    $("ticks").replaceChildren(...idx.map((i) => {
+      const t = h("span", "op-tick", winLabel(i));
+      t.style.left = `${(i / (n - 1)) * 100}%`;
+      return t;
+    }));
+  }
+
   function renderSliderLabels() {
+    renderTicks();
     const s = $("slider");
     const i = Number(s.value);
     $("slider-label").textContent = winLabel(i);

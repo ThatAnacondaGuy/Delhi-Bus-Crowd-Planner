@@ -22,6 +22,14 @@
   const ROLE_ORDER = ["fastest", "less_crowded", "leave_later"];
   const T = {
     title: { en: "Delhi bus crowding", hi: "दिल्ली बस भीड़" },
+    tagline: {
+      en: "See how crowded each Delhi bus usually is, before you board.",
+      hi: "बस में चढ़ने से पहले देखें कि दिल्ली की हर बस में आमतौर पर कितनी भीड़ रहती है।",
+    },
+    keyLabel: { en: "What the levels mean", hi: "भीड़ के स्तर का मतलब" },
+    board: { en: "Board here", hi: "यहाँ चढ़ें" },
+    change: { en: "Change here", hi: "यहाँ बस बदलें" },
+    alight: { en: "Get off here", hi: "यहाँ उतरें" },
     change: { en: "Change", hi: "बदलें" },
     from: { en: "From", hi: "कहाँ से" },
     to: { en: "To", hi: "कहाँ तक" },
@@ -75,8 +83,19 @@
     office_special: "This includes an office special service.",
     rho_fallback: "How often buses run here is estimated from similar routes.",
   };
+  const FLAG_WORDS_HI = {
+    full: "सबसे भीड़ वाले हिस्सों में गिनती बस की क्षमता पर रुक जाती है, इसलिए बस दिखाए गए से ज़्यादा भरी हो सकती है।",
+    scaled_to_capacity: "इस रूट की गिनती घटाई गई है ताकि वह बसों की क्षमता के भीतर रहे।",
+    low_app_use: "इस रूट पर कम यात्री ऐप इस्तेमाल करते हैं, इसलिए यह अंदाज़ा मोटा है।",
+    schedule_mismatch: "इस रूट की बसें समय-सारणी से अलग चलीं।",
+    alighting_sensitive: "रूट के आख़िर में, जहाँ लोग उतरते हैं, गिनती कम पक्की है।",
+    office_special: "इसमें ऑफ़िस स्पेशल सेवा शामिल है।",
+    rho_fallback: "यहाँ बसें कितनी बार चलती हैं, यह मिलते-जुलते रूटों से अनुमानित है।",
+  };
   const BUS_TYPE = { "12m_ac": "12 m AC bus", "9m_devi": "9 m Devi (small) bus", "12m_nonac": "12 m non-AC bus" };
+  const BUS_TYPE_HI = { "12m_ac": "12 मी AC बस", "9m_devi": "9 मी देवी (छोटी) बस", "12m_nonac": "12 मी बिना AC बस" };
   const WOMEN_SENTENCE = "Women riding free and pass holders are not in this data, so buses can be fuller than shown.";
+  const WOMEN_SENTENCE_HI = "मुफ़्त यात्रा करने वाली महिलाएँ और पास धारक इस डेटा में शामिल नहीं हैं, इसलिए बसें दिखाए गए से ज़्यादा भरी हो सकती हैं।";
 
   const PRESETS = [
     { from: "ISBT Anand Vihar", to: "Connaught Place", depart: "18:00", day: "weekday" },
@@ -156,6 +175,18 @@
     return h("p", "chip lvl-" + (LEVEL[lv] ? lv : "no_data"),
       h("span", "dots", L.dots), h("span", "", pick(L)));
   }
+  // the first-screen key: the same words, dots and colours as the chips, built from the one LEVEL table
+  function buildKey() {
+    const box = $("key");
+    box.setAttribute("aria-label", tx("keyLabel"));
+    box.replaceChildren(...["seats", "standing", "crowded", "no_data"].map((lv) => {
+      const L = LEVEL[lv];
+      const dots = h("span", "dots", L.dots);
+      dots.setAttribute("aria-hidden", "true");
+      return h("span", "key-item lvl-" + lv, dots, h("span", "", pick(L)));
+    }));
+  }
+
   // aria: the dots are decoration; the word carries the meaning
   function chipEl(lv) {
     const el = chip(lv);
@@ -214,17 +245,26 @@
     return state.lang === "hi" ? `${n} बार बदलना` : `${n} ${n === 1 ? "change" : "changes"}`;
   }
 
+  function routePills(opt) {
+    const legs = busLegs(opt);
+    if (!legs.length) return null;
+    const ul = h("ul", "routes", ...legs.map((l) => h("li", "route-pill", l.route)));
+    ul.setAttribute("aria-label", tx("buses"));
+    return ul;
+  }
+
   function fact(label, value) { return h("div", "", h("dt", "", label), h("dd", "", value)); }
 
-  function buildCard(opt) {
+  function buildCard(opt, idx) {
     const walkOnly = !opt.headline;
     const isSeat = state.seat && (opt.roles || []).includes("less_crowded");
     const card = h("article", "card" + (isSeat ? " card--seat" : ""));
     card.dataset.roles = (opt.roles || []).join(" ");
+    card.style.setProperty("--i", String(idx || 0));
 
     card.append(h("header", "card-head", h("h2", "role", roleText(opt.roles)), h("div", "dur", mins(opt.minutes))));
     card.append(h("p", "times", `${tx("leaveAt")} `, h("b", "", opt.depart), ` → ${tx("arriveAt")} `, h("b", "", opt.arrive)));
-    if (isSeat) card.append(h("p", "stretch", tx("seatBest")));
+    if (isSeat) card.append(h("p", "stretch seat-best", tx("seatBest")));
 
     if (walkOnly) {
       const w = (opt.legs || []).find((l) => l.mode === "walk");
@@ -235,9 +275,11 @@
     }
 
     const head = opt.headline;
+    const pills = routePills(opt);
+    if (pills) card.append(pills);
     card.append(chipEl(head.level));
     const line = stretchLine(head);
-    if (line) card.append(h("p", "stretch", line));
+    if (line) card.append(h("p", "stretch callout callout--" + (LEVEL[head.level] ? head.level : "no_data"), line));
     if (opt.tradeoff) card.append(h("p", "tradeoff", tradeoff(opt.tradeoff)));
     card.append(timeBar(opt));
     if (EVIDENCE[head.evidence]) card.append(h("p", "evidence", pick(EVIDENCE[head.evidence])));
@@ -245,7 +287,6 @@
     if (opt.timetable_uncertain) card.append(h("p", "warn", tx("uncertain")));
 
     const dl = h("dl", "facts");
-    dl.append(fact(tx("buses"), busLegs(opt).map((l) => l.route).join(", ")));
     dl.append(fact(tx("changes"), changesText(opt.changes)));
     dl.append(fact(tx("fare"), `₹${opt.fare_inr}`));
     card.append(dl);
@@ -267,15 +308,15 @@
     return opts.slice().sort((a, b) => rank(a) - rank(b));
   }
 
-  function renderResults() {
+  function renderResults(fresh) {
     const box = $("results");
     box.replaceChildren();
     const d = state.data;
     $("tools").hidden = !d;
     if (!d) return;
     const opts = orderOptions(d.options || []);
-    box.className = "results" + (opts.length === 1 ? " results--one" : "");
-    for (const o of opts) box.append(buildCard(o));
+    box.className = "results" + (opts.length === 1 ? " results--one" : "") + (fresh ? " results--enter" : "");
+    opts.forEach((o, i) => box.append(buildCard(o, i)));
     if (!opts.length) box.append(h("p", "problem", tx("noOptions")));
 
     const notes = $("notes");
@@ -382,7 +423,7 @@
       state.data = await res.json();
       if (id !== state.req) return;
       setStatus("");
-      renderResults();
+      renderResults(true);
     } catch (e) {
       if (id !== state.req) return;
       setStatus("");
@@ -489,7 +530,12 @@
 
   function whyLead() {
     const n = state.oneIn;
-    const paren = Number.isFinite(n) && n > 0 ? ` (about 1 in ${n} riders)` : "";
+    const ok = Number.isFinite(n) && n > 0;
+    if (state.lang === "hi") {
+      const paren = ok ? ` (लगभग हर ${n} यात्रियों में से 1)` : "";
+      return `${tx("whyLead")}${paren}, फिर बस में सवार सभी लोगों का अनुमान लगाने के लिए बढ़ाई गई गिनती, जो कभी बस की क्षमता से ज़्यादा नहीं होती। ${WOMEN_SENTENCE_HI}`;
+    }
+    const paren = ok ? ` (about 1 in ${n} riders)` : "";
     return `Based on app tickets${paren}, scaled up to estimate everyone on board — never more than a bus can hold. ${WOMEN_SENTENCE}`;
   }
 
@@ -507,14 +553,18 @@
   function openWhy(opt, opener) {
     const body = [h("p", "why-lead", whyLead())];
     const day = (state.data && state.data.query && state.data.query.day) || (state.q && state.q.day) || "weekday";
-    body.push(h("p", "why-period", `October 2026 ${day === "weekend" ? "weekends" : "weekdays"}, festival season`));
+    const wk = day === "weekend";
+    body.push(h("p", "why-period", state.lang === "hi"
+      ? `अक्टूबर 2026 के ${wk ? "सप्ताहांत" : "कार्यदिवस"}, त्योहारों का मौसम`
+      : `October 2026 ${wk ? "weekends" : "weekdays"}, festival season`));
     for (const leg of busLegs(opt)) {
-      body.push(h("h3", "", `${tx("onBoard")}: ${leg.route} · ${BUS_TYPE[leg.bus_type] || leg.bus_type || ""}`));
+      body.push(h("h3", "", `${tx("onBoard")}: ${leg.route} · ${(state.lang === "hi" ? BUS_TYPE_HI : BUS_TYPE)[leg.bus_type] || leg.bus_type || ""}`));
       body.push(h("p", "", peopleText(leg)));
     }
     const flags = new Set();
     for (const s of segments(opt)) for (const f of s.flags || []) flags.add(f);
-    const words = Array.from(flags).filter((f) => FLAG_WORDS[f]).map((f) => FLAG_WORDS[f]);
+    const fw = state.lang === "hi" ? FLAG_WORDS_HI : FLAG_WORDS;
+    const words = Array.from(flags).filter((f) => fw[f]).map((f) => fw[f]);
     if (words.length) {
       body.push(h("h3", "", tx("routeNotes")));
       body.push(h("ul", "", ...words.map((w) => h("li", "", w))));
@@ -546,12 +596,38 @@
     return leafletPromise;
   }
 
+  const PIN = { board: "▲", change: "◆", alight: "■" };
+
+  // where the rider gets on, changes and gets off, read from the first and last drawn point of each bus leg
+  function stopPoints(opt) {
+    const legs = busLegs(opt), pts = [];
+    legs.forEach((leg, i) => {
+      const segs = (leg.segments || []).filter((s) => Array.isArray(s.coords) && s.coords.length);
+      if (!segs.length) return;
+      const start = segs[0].coords[0], end = segs[segs.length - 1].coords[segs[segs.length - 1].coords.length - 1];
+      const prev = pts[pts.length - 1];
+      const same = prev && prev.at[0] === start[0] && prev.at[1] === start[1];
+      if (same) prev.kind = "change";
+      else pts.push({ kind: i === 0 ? "board" : "change", at: start, name: leg.from && leg.from.name });
+      pts.push({ kind: i === legs.length - 1 ? "alight" : "change", at: end, name: leg.to && leg.to.name });
+    });
+    return pts;
+  }
+
+  function pinIcon(L, kind) {
+    const el = h("span", "pin pin--" + kind, PIN[kind]);
+    el.setAttribute("aria-hidden", "true");
+    return L.divIcon({ className: "pin-wrap", html: el, iconSize: [30, 30], iconAnchor: [15, 15] });
+  }
+
   async function openMap(opt, opener) {
     const holder = h("div", "map");
     holder.id = "map";
     const legend = h("div", "legend");
     for (const lv of ["seats", "standing", "crowded", "no_data"]) legend.append(h("span", "l-" + lv, pick(LEVEL[lv])));
-    openSheet(tx("mapTitle"), [legend, holder], opener);
+    const pinKey = h("div", "legend pin-key");
+    for (const k of ["board", "change", "alight"]) pinKey.append(h("span", "pin-key-item", h("span", "pin pin--" + k, PIN[k]), pick(T[k])));
+    openSheet(tx("mapTitle"), [legend, pinKey, holder], opener);
     let L;
     try {
       L = await loadLeaflet();
@@ -575,7 +651,14 @@
       line.addTo(map);
       all.push(...s.coords);
     }
-    if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [24, 24] }); else map.setView([28.6139, 77.209], 11);
+    const pins = stopPoints(opt);
+    for (const pt of pins) {
+      const m = L.marker(pt.at, { icon: pinIcon(L, pt.kind), keyboard: false, zIndexOffset: pt.kind === "change" ? 0 : 200 });
+      m.bindTooltip(h("span", "", pt.name ? `${pick(T[pt.kind])}: ${pt.name}` : pick(T[pt.kind])), { direction: "top", offset: [0, -12] });
+      m.addTo(map);
+      all.push(pt.at);
+    }
+    if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [36, 36], maxZoom: 16 }); else map.setView([28.6139, 77.209], 11);
     setTimeout(() => map.invalidateSize(), 50);
   }
 
@@ -615,7 +698,7 @@
     document.querySelector(".seg").hidden = true;
     $("places").remove();
     slotLabels();
-    await CD.banner($("demo-banner"), "commuter").catch(() => { /* the banner is optional */ });
+    await CD.banner($("demo-banner"), "commuter", state.lang).catch(() => { /* the banner is optional */ });
   }
 
   // ---------------------------------------------------------------- language
@@ -631,7 +714,9 @@
     if (CD.static) slotLabels();
     updateSummary();
     buildPresets();
+    buildKey();
     renderResults();
+    if (CD.static) CD.banner($("demo-banner"), "commuter", state.lang).catch(() => { /* the banner is optional */ });
   }
 
   // ---------------------------------------------------------------- start

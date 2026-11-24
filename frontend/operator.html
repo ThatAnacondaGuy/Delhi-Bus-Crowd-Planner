@@ -29,6 +29,8 @@
     <div id="status" class="status" role="status" aria-live="polite"></div>
     <div id="problem" class="problem" role="alert" hidden></div>
 
+    <section class="op-tiles" id="tiles" aria-label="Headline numbers for the ranked list"></section>
+
     <div class="op-grid">
       <section class="op-card op-trips" aria-labelledby="trips-title">
         <div class="op-card-head">
@@ -85,6 +87,7 @@
         <div class="op-slider">
           <label for="slider"><span id="slider-label" class="op-time">09:00</span> <span class="op-muted" id="slider-note"></span></label>
           <input id="slider" type="range" min="0" max="47" step="1" value="18" aria-describedby="slider-note">
+          <div class="op-ticks" id="ticks" aria-hidden="true"></div>
         </div>
         <div class="legend op-legend" id="map-legend" aria-label="Map colours"></div>
         <div id="map" class="op-map" role="region" aria-label="Map of corridor crowding"></div>
