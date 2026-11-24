@@ -44,9 +44,48 @@ Thumbs.db
 data/raw/*
 !data/raw/.gitkeep
 
-# Exclude generated large binary Parquet and Pickle models
-data/processed/*.parquet
-data/processed/*.pkl
+# Generated data and binary artifacts
+data/processed_/
+*.parquet
+*.pkl
+*.geojson
+*.7z
+*.duckdb
+data/processed/*
 
-# Ensure validation summary JSON reports remain tracked
+# Re-includes (must stay after the patterns above)
 !data/processed/*.json
+!data/processed/*.md
+!data/processed/*.csv
+# local-only outputs: absolute paths in the hash cache, 4 MB pipeline CSV
+data/processed/manifest.json
+data/processed/route_hour_summary.csv
+# installers dropped in the repo root
+*.dmg
+!data/gps_aggregates/**
+!tests/fixtures/**
+
+# Binary artifacts stay ignored even inside the re-included directories
+tests/fixtures/**/*.parquet
+tests/fixtures/**/*.pkl
+tests/fixtures/**/*.geojson
+tests/fixtures/**/*.7z
+tests/fixtures/**/*.db
+tests/fixtures/**/*.duckdb
+data/gps_aggregates/**/*.parquet
+data/gps_aggregates/**/*.pkl
+data/gps_aggregates/**/*.geojson
+data/gps_aggregates/**/*.7z
+data/gps_aggregates/**/*.db
+data/gps_aggregates/**/*.duckdb
+
+# Demo film (video/): dependencies, renders and user-supplied media are never committed
+video/node_modules/
+video/out/
+video/public/vo/
+video/public/music*
+video/public/sfx/
+video/public/clips/
+video/public/captures/
+video/public/assets.json
+video/extra resources/

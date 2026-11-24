@@ -1,0 +1,10 @@
+stop_id,stop_name,stop_lat,stop_lon
+1,Alpha Terminal,28.6,77.2
+2,Bravo Market,28.61349,77.2
+3,Charlie Chowk,28.62698,77.2
+4,Delta Metro,28.64047,77.2
+5,Echo Depot,28.65396,77.2
+6,Foxtrot Nagar,28.62698,77.21531
+7,Charlie Chowk Opp,28.627,77.2003
+8,Connaught Place,28.67,77.2
+9,ISBT Anand Vihar,28.59,77.2

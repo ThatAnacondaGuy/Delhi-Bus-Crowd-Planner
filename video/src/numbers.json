@@ -1,0 +1,36 @@
+{
+  "run_id": "20261124-1340-2c69f787",
+  "tickets": 2559899,
+  "one_in": 44,
+  "peaks": [
+    "09:00",
+    "19:00"
+  ],
+  "bus_km_model": 496158,
+  "bus_km_published": 501000,
+  "load_factor_model": "0.54",
+  "load_band": "0.78–0.89",
+  "load_band_low": "0.78",
+  "load_band_high": "0.89",
+  "load_full_allocation": "1.70",
+  "corridor_hits_total": 10,
+  "corridors_total": 10,
+  "corridor_chance": "10.0",
+  "corridor_top_decile_pct": 19,
+  "corridor_top_decile_chance_pct": 10,
+  "corridor_both_ends": 7,
+  "radial_pairs": 359,
+  "radial_am_pct": 80,
+  "radial_pm_pct": 78,
+  "week_keep_pct": 76,
+  "week_load_corr": "0.78",
+  "share_many_tickets": "4.7",
+  "share_rough": "89",
+  "share_no_data": "6.4",
+  "operator": {
+    "route": "578DOWN",
+    "depart": "08:30",
+    "crowded_rider_min_removed": 19589,
+    "riders_moved_down": 7363
+  }
+}

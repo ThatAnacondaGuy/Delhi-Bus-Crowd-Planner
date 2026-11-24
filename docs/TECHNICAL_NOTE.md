@@ -1,228 +1,379 @@
-# Technical Note: Mathematical Methodology, Calibration & Empirical Validation
-### Transport Stack Hackathon 2026 — Phase 1 (Problem 2)
-**Crowdedness-Aware Bus Journey Planner for Delhi (DTC / DIMTS Cluster)**
+<!-- Rendered to TECHNICAL_NOTE.md by `python -m src.pipeline.run --until render`. Edit this template, never the .md: every number is a placeholder filled from the pipeline's own output or from config.py. -->
+<div align="center">
+
+# Technical note
+
+### How we estimate how crowded a Delhi bus stretch usually is, and how far to trust it
+
+Transport Stack Hackathon 2026 · Phase 1 · Problem 2 · Team Kshama: Aniket Ingale and Ashish Maurya (Ash)
+
+<sub>Run `20261124-1340-fc8a433f` · code `b52923d` · finished 2026-11-24 13:40 IST · every number below is read from that run</sub>
+
+</div>
+
+> **In one paragraph.** From 2,559,899 ONDC app tickets (October 2026) we estimate, for every Delhi bus route, direction, stretch between two stops and half hour, how many people are usually on board, and we show it to riders as a level: *Usually seats*, *Usually standing*, *Usually crowded* or *No data*. App tickets are about 1 in 44 riders, so we scale them up, never to more than a bus can hold. **No field count was possible**, so we test the model against everything we can compare it with and report the misses beside the hits. Most levels (89% of bus-km) are a Rough guess, and the card says so.
+
+**Contents:** [1 Data](#1-data-and-what-it-cannot-see) · [2 Method](#2-method) · [3 Assumptions](#3-assumptions) · [4 Brief checklist](#4-the-brief-checklist) · [5 App share and the hackathon figure](#5-reconciling-the-app-share) · [6 Validation](#6-validation-and-independent-checks) · [7 Coverage and weak spots](#7-coverage-and-the-least-reliable-areas) · [8 Phase 2](#8-phase-2) · [Appendix](#appendix)
 
 ---
 
-## 1. Dataset Profile, Schemas & Ground Truth Findings
+## 1. Data and what it cannot see
 
-### 1.1 GTFS Static Feed (`delhi_buses_static_gtfs_v1`)
-The static schedule models the transit network topology published by DTC and DIMTS:
-- **`routes.txt`**: 2,574 routes (`route_id`, `route_short_name`, `route_long_name`).
-- **`stops.txt`**: 6,862 physical bus stops (`stop_id`, `stop_name`, `stop_lat`, `stop_lon`).
-- **`trips.txt`**: 80,357 scheduled trips (`route_id`, `trip_id`, `shape_id`).
-- **`stop_times.txt`**: 2,737,136 scheduled stop events (`trip_id`, `arrival_time`, `departure_time`, `stop_id`, `stop_sequence`).
-- **`shapes.txt`**: 965,607 coordinate vertices mapping route alignments.
+**Tickets.** One CSV of ONDC app and QR tickets, 1–31 October 2026: 2,559,899 tickets, 2,753,606 passengers, 2,259 route strings. Each row has the route string, boarding and alighting stop names, passengers, fare, time (time-zone aware; we pin every operation to Asia/Kolkata) and, on 48.5% of rows, no vehicle number. Both ticket channels are bought on board and behave as one population, so we never use the missing-vehicle share to scale anything.
 
-#### Critical GTFS Domain Findings
-1. **Directional ID Missingness**: The standard GTFS column `direction_id` in `trips.txt` is **100% NULL**. 
-2. **Direction Encoded in Strings**: Direction is explicitly encoded as alphanumeric suffixes in `route_short_name` and `route_long_name` (e.g., `8UP` = Outbound, `8DOWN` = Inbound, `8ADOWN` = Inbound Variant A).
-3. **Trip Variations**: Each route features multiple scheduled trip variants (e.g., depot pull-ins, truncated runs). The canonical physical topology must be extracted by selecting the representative trip with `max(stop_count)` per `route_id`.
+Known holes are cut out of every rider count: 2 October (public holiday) and 20 October (Dussehra) as whole days, and three windows (6 October morning, 17–19 October when one channel fell to a quarter of normal, 29 October evening). That leaves 29 clean days of 31.
 
-### 1.2 ETM Ticketing Transaction Log (`October-Delhi.csv`)
-The operational dataset consists of all Electronic Ticketing Machine (ETM) and ONDC transactions recorded across Delhi between October 1, 2026 and October 31, 2026:
-- **Total Transactions**: **2,559,899** records.
-- **Total Passengers Logged**: **2,753,606** passengers (mean: 1.076 pax/ticket).
-- **Date Range**: `2026-10-01 00:00:10` to `2026-10-31 23:59:58` (31 complete days).
-- **Fleet Mode**: AC: **80.4%** of tickets (2,059,092), Non-AC: **19.6%** (500,807).
-- **Ticket Type**: every record has `ticket_type_id = 1`; the file carries no pass/concession split, so pass holders are not visible in this data.
+**Timetable (GTFS).** 2,574 routes for DTC and the cluster operator, one service day for every day of the week. The scheduled times are a template: every stop-to-stop time equals the straight-line distance at a fixed 18 km/h, so they carry no information about real traffic. Direction is not in the feed; it is read from the route name (UP, DOWN, ring markers, A-B pairs).
 
-#### Critical Ticketing Findings
-1. **Literal `'NULL'` Fleet Identifier**:
-   - While standard programmatic checks report 0% NULLs in `vehicle_number`, an exact string audit revealed that **1,241,961 transactions (48.52%)** contain the literal string `'NULL'`.
-   - **Implication**: Any pipeline attempting vehicle-level trip matching based strictly on `vehicle_number` will silently discard almost half of all passenger transactions.
-2. **Colloquial Stop Divergence**:
-   - Raw ticketing stop names diverge widely from GTFS stop names due to abbreviations (`sec` vs `sector`, `stn` vs `station`, `ph-ii` vs `phase 2`), landmark aliases, and slash-separated bilingual or dual-depot notations (`Ito Agcr / Ito`).
-   - Raw exact match between ticketing stop names and GTFS stop names was only **48.27%**.
+**GPS.** The October 2026 DTC feed (about 11–12 s between pings for most buses). We do not publish it. We reduce it to one aggregate (the share of scheduled trips that ran, by route, hour and day type, and a run-time ratio) from 10 sample days, and only that aggregate is in the repository.
+
+**Outside figures** used only as checks: published daily ridership, bus-km and load factor (Economic Survey of Delhi 2025-26; CAG report 4 of 2024), and ten corridors researched without looking at our output.
+
+**What the data cannot see.** Women riding free, pass holders and cash riders are not in app tickets. The month is one festival-season October. There is no count of people on a bus anywhere in it. Everything in this note follows from those three facts.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/architecture-dark.svg">
+    <img src="assets/architecture.svg" alt="System diagram: inputs, pipeline stages, outputs, planner and API, screens" width="900">
+  </picture>
+</p>
 
 ---
 
-## 2. Entity Resolution & Canonical Stop Mapping
+## 2. Method
 
-### 2.1 Representative Canonical Sequence Extraction
-For each of the 2,574 GTFS routes, we extract the canonical ordered stop sequence by identifying the representative `trip_id` maximizing the stop count:
-$$t^* = \arg\max_{t \in \text{Trips}(r)} |\text{StopTimes}(t)|$$
+Eight resumable stages (`python -m src.pipeline.run`), each reading and writing tables in one DuckDB file. Each step below says what it does, why, and where it can be wrong.
 
-For each stop $s_i$ in sequence $1 \dots N$, we record:
-$$\big(r, \text{seq}_i, s_i, \text{lat}_i, \text{lon}_i, \Delta T_{i-1 \to i}\big)$$
-where scheduled inter-stop travel time $\Delta T_{i-1 \to i} = T_{\text{arr}}(s_i) - T_{\text{dep}}(s_{i-1})$ (defaulting to 60s if zero or missing). This produced **83,435 canonical stop entries** across all 2,574 routes.
+### 2.1 Resolve tickets to the timetable
 
-### 2.2 Colloquial Delhi Transit Text Normalizer
-A rule-based text transformation pipeline standardizes raw ticketing stop strings prior to matching:
-1. **Alias Splitting**: If a stop string contains slashes (e.g., `"Ito Agcr / Ito"`), it is parsed into the full string and individual constituent tokens (`["Ito Agcr", "Ito"]`).
-2. **Abbreviation Expansion**:
-   $$\begin{aligned}
-   \text{sec} &\to \text{sector} & \text{ph-i / ph-ii / ph-iii} &\to \text{phase 1 / phase 2 / phase 3} \\
-   \text{stn} &\to \text{station} & \text{t. / t-point} &\to \text{t point} \\
-   \text{xing / x-ing} &\to \text{crossing} & \text{mkr / mkt} &\to \text{market} \\
-   \text{hosp} &\to \text{hospital} & \text{vhr} &\to \text{vihar} \\
-   \text{ng} &\to \text{nagar} & \text{extn} &\to \text{extension}
-   \end{aligned}$$
-3. **Punctuation & Whitespace Stripping**: Removal of non-alphanumeric noise and space normalization.
+Stop names in tickets are free text ("Ito Agcr / Ito", "sec", "stn"). Names are first tidied (common abbreviations such as "stn" are expanded). For each route we then match each name only against that route's own stops: an exact match first, then a fuzzy match with a floor of 78 out of 100. Ties between equally good stops are broken by a second and third comparison; if still tied the ticket is rejected as ambiguous rather than guessed. Route strings that match no route exactly are tried against close aliases (for example the same number without a variant suffix such as STL or EXT) and accepted only when at least 80% of their tickets resolve in stop order on that route.
 
-### 2.3 Route-Scoped RapidFuzz Resolution
-Rather than executing a computationally prohibitive global search across all 6,862 stops, matching is strictly constrained to the ordered stops on the candidate route:
-1. **Exact Canonical Match**: Direct lookup against canonical stop names on that route.
-2. **Alias Constituent Match**: Checking individual slash-token constituents.
-3. **Fuzzy String Alignment**: Using `RapidFuzz` `token_sort_ratio` and `WRatio`:
-   $$\text{Score}(u, v) = \max\big(\text{token\_sort\_ratio}(u, v), \text{WRatio}(u, v)\big) \ge 78$$
+**Result:** 2,420,185 of 2,559,899 tickets resolved (94.5% of tickets, 94.5% of passengers). The 139,714 rejected are counted by reason in [Appendix A](#a-tickets-that-did-not-resolve). Ticket conservation is a gate: raw = resolved + rejected, per route string.
 
-### 2.4 Directional Sequence Validation
-Once `start_stop_name` and `end_stop_name` resolve to canonical sequences $s_{\text{orig}}$ and $s_{\text{dest}}$ on route $r$:
-- **Valid Forward Trip**: $s_{\text{orig}} < s_{\text{dest}}$ (Valid passenger boarding and alighting).
-- **Reversed Sequence Anomaly**: $s_{\text{orig}} > s_{\text{dest}}$ (ETM conductor route direction toggle error).
-- **Degenerate Single Stop**: $s_{\text{orig}} = s_{\text{dest}}$ (ETM entry error, 0 distance).
+### 2.2 The travel-time clock
 
-#### Sprint 1 Quantitative Results
-| Metric | Value | Relative Impact |
-| :--- | :---: | :--- |
-| **Total Ticketing Rows Analyzed** | 2,559,899 | 100.0% |
-| **Route Code Match Rate** | 91.19% | 2,334,310 rows (covering **98.71%** of pax volume) |
-| **Stop Name Resolution Match Rate** | **93.13%** | Jumped from **48.27%** raw (+44.86% absolute gain) |
-| **Valid Forward Tickets** ($s_{\text{orig}} < s_{\text{dest}}$) | **2,394,241** | **93.51% of total transaction volume** |
-| **Valid Forward Passengers Recovered** | **2,574,781** | **93.51% of all passengers** |
-| **Reversed Sequence Anomalies** | 60,378 | 2.36% (conductor direction toggle artifact) |
-| **Identical OD Anomalies** | 2,130 | 0.08% |
-| **Parquet Footprint** (`resolved_tickets.parquet`) | **24.99 MB** | ZSTD compressed (down from 290 MB CSV) |
+Because the timetable is a template, run times come from tickets. Two tickets bought on the same vehicle, route and day give the real time between two boarding stops. We compare that with the template time and average the ratio by operator and hour (and by route where it has at least 30 pairs).
 
----
+| Hour of day | DTC: observed ÷ template | Cluster: observed ÷ template |
+|---|---|---|
+| 06:00 | 0.79 | 0.78 |
+| 08:00 | 1.00 | 0.99 |
+| 12:00 | 1.24 | 1.13 |
+| 18:00 | 1.42 | 1.39 |
+| 22:00 | 0.83 | 0.81 |
 
-## 3. Passenger Flow Reconstruction & Bus Load Factor Modeling
+<sub>From 206,984 ticket pairs. Early morning is faster than the template, the evening peak is about 1.4 times slower.</sub>
 
-### 3.1 Temporal Discretization
-To capture diurnal transit dynamics, transactions are partitioned into:
-- **Day Types**: `weekday` (Mon–Fri, 22 days in Oct 2026), `saturday` (5 days), `sunday` (4 days).
-- **Time Slots**: 48 discrete half-hour intervals:
-  $$\tau = \left\lfloor \frac{\text{seconds since midnight}}{1800} \right\rfloor \in \{0, 1, \dots, 47\}$$
+**A choice we made after seeing numbers, so we show both.** A pair of consecutive tickets can span two different trips (a rider boards a later bus) or be a batch print. We keep pairs whose ratio is between 0.4-2.5 and drop the rest. The window was chosen after looking at the data, so here is the wider 0.25-4 window: the DTC 18:00 factor would be 1.521 instead of 1.423, and 08:00 would be 1.033 instead of 1.003. The 08:00 value stays near 1.0 under both windows.
 
-### 3.2 Vectorized Difference-Array Flow Expansion
-Let route $r$ have canonical stop sequence $1, 2, \dots, N$. For each temporal bucket $(d, \tau)$, we aggregate total passenger demand $P(u, v)$ for all resolved OD pairs $(u, v)$ where $1 \le u < v \le N$.
+**GPS disagrees a little, and we say so.** On weekdays between 05:00 and 21:00 GPS run times are 1.08 to 1.24 times the ticket clock (median 1.16), so real trips are roughly 10–20% slower than our clock. We state this and do not apply it. The ticket clock is measured between boarding stops of paying riders; we have not worked out which clock is closer to the truth, so planner travel times may be a little short.
 
-Instead of expanding every ticket across intermediate stops, we populate a difference array $\Delta$ of size $N$:
-$$\Delta[u] \mathrel{+}= P(u, v), \quad \Delta[v] \mathrel{-}= P(u, v)$$
+<p align="center"><img src="assets/fig-travel-time-factor.svg" alt="Observed run time against the timetable by hour, DTC and cluster" width="720"></p>
 
-The expected segment passenger volume per 30-minute slot is the prefix sum divided by operational days $D(d) \in \{22, 5, 4\}$:
-$$Q(s, s+1 \mid r, d, \tau) = \frac{1}{D(d)} \sum_{k=1}^{s} \Delta[k] \quad \text{for } s \in \{1, \dots, N-1\}$$
-This algorithm executes in $O(N)$ vector operations, processing all **1,409,093 OD combinations across 1,209,599 segment slots in 3.28 seconds**.
+### 2.3 Which scheduled trips really ran
 
-### 3.3 Dual-Source Supply Normalization
-Because 48.52% of transactions lack physical vehicle IDs, relying solely on empirical vehicle tracking underestimates capacity, while relying solely on static GTFS timetables misses operational cancellations. We formulate a dual-source supply estimator:
+The timetable lists 80,357 trips a day. DTC's published bus-km is far below what that schedule implies, so dividing riders by *scheduled* buses would spread them too thinly. From GPS we count a trip as run when one vehicle passes at least 80% of the route's stops in order (positions interpolated between pings, within 75 m of a stop). The share that ran is set only where at least 80% of the route's ticket-linked vehicles appear in the feed (1,733 of 2,574 routes). Everywhere else it falls back, in order, to the route's own value, then to the operator's value for that hour and day type, then to the operator's value for the day type. It is never set to 1.
 
-1. **GTFS Scheduled Departures ($S_{\text{GTFS}}$)**:
-   Count of trips in `stop_times.txt` originating on route $r$ within 30-min window $\tau$:
-   $$S_{\text{GTFS}}(r, \tau) = \sum_{t \in \text{Trips}(r)} \mathbb{I}\left(\tau \le \frac{T_{\text{dep}}(t, \text{first\_stop})}{1800} < \tau+1\right)$$
-2. **Empirical Active Fleet ($S_{\text{Emp}}$)**:
-   Distinct non-null vehicle IDs observed, scaled by the missingness factor:
-   $$S_{\text{Emp}}(r, d, \tau) = \frac{|\text{Distinct Non-Null Vehicles}|}{D(d) \cdot (1 - 0.4852)}$$
-3. **Calibrated Supply ($S_{\text{eff}}$)**:
-   $$S_{\text{eff}}(r, d, \tau) = \max\Big(1.0, \, \max\big(S_{\text{GTFS}}(r, \tau), \, S_{\text{Emp}}(r, d, \tau)\big)\Big)$$
+**Result:** about 38% of scheduled trips show up as having run on weekdays. Applied to the timetable, DTC bus-km come to 496,158 a day against 501,000 published, which is an independent check on the trip-ran rule, not something the rule was fitted to (6.4 also says how far the timetable alone was off).
 
-### 3.4 Penetration Scaling & Sigmoid Crowding Formulation
-1. **Calibrated Bus Passenger Demand**:
-   Accounting for digital market penetration $\kappa = 25.0$ (~4% digital share):
-   $$P_{\text{bus}}(s, s+1) = \frac{Q(s, s+1) \cdot \kappa}{S_{\text{eff}}(r, d, \tau)}$$
-2. **Load Ratio ($L$)**:
-   Normalized by fleet capacity ($\text{Cap} = 70$ for AC, $65$ for Non-AC):
-   $$L = \frac{P_{\text{bus}}(s, s+1)}{\text{Cap}(\text{mode}_r)}$$
-3. **Zero-Anchored Sigmoid Crowding Score ($C \in [0, 1]$)**:
-   $$S(L) = \frac{1}{1 + e^{-k(L - L_0)}}, \quad C = \frac{S(L) - S(0)}{1 - S(0)}$$
-   where $L_0 = 0.65$ (discomfort inflection point) and $k = 3.5$ (steepness).
+<p align="center"><img src="assets/fig-trips-ran-by-hour.svg" alt="Share of scheduled trips that ran, by hour, from GPS" width="720"></p>
 
-#### Comfort Tier Classification
-$$C(e, t) < 0.35 \implies \textbf{Low (Comfortable Seats)}, \quad 0.35 \le C(e, t) \le 0.70 \implies \textbf{Moderate (Standing Room)}, \quad C(e, t) > 0.70 \implies \textbf{High (Crush Load)}$$
+### 2.4 Riders on each stretch
+
+Each resolved ticket is placed on the stretches between its boarding and alighting stops, at the time the bus is on each stretch: purchase time plus the corrected run time from the boarding stop. Purchase time is a good proxy for boarding. Every stretch exists in every window with explicit zeros, so a quiet stretch is a measured zero, not a missing value.
+
+**Alighting correction.** App tickets end at route terminals more often than they start there (people buy near the end of a ride): the median route-direction has 1.36 times as many terminal alightings as the reverse direction has terminal boardings, and one route direction in ten sits at the 2.0 cap (ratios are clamped there, so how far above it the true ratio goes is not visible). We cap terminal alightings at the reverse route's terminal boardings times the route's intermediate-stop ratio, and spread the excess over earlier stops in the same fare slab in proportion to the reverse direction's boardings. If the reverse route has fewer than 5 terminal boardings in the month it is uninformative, so we apply no correction and flag the route instead. Of 1,674 route directions, 1,012 have a known ratio, 816 were corrected (145,061 passengers moved) and 662 are flagged *alighting-sensitive*: their last 2 stretches show a Rough guess at best. The result is published with and without the correction (6.5).
+
+### 2.5 Buses and riders per bus
+
+Riders and buses are counted in a centred 90-minute window, reported every 30 minutes on weekdays (120 and 60 on weekends, where tickets are thinner). Buses on a stretch are the scheduled buses passing in that window times the share that ran. If no bus is scheduled while riders exist, we widen the window by 30 minutes each side, then to the route-hour; if there is still none the cell says "no bus scheduled" and riders see No data. We never divide by a floor value. After the fallback, 0.72% of rider volume has no bus (the gate allows 1%). App riders per bus ℓ is riders divided by buses, per clean day.
+
+### 2.6 Scaling app riders up to people on board
+
+This is the step that matters most and the one we are least able to verify, so we describe it in full.
+
+1. **Operator scale E.** Published daily ridership divided by app passengers resolved per clean day: **34.8** for DTC and **77.2** for the cluster operator. One citywide factor would be wrong: app use differs by operator and by route, so a single factor would put some routes far above what a bus can hold.
+2. **Capacity bound per route.** B = a route's crush load divided by the 95th percentile of its weekday-peak app riders per bus, over cells with at least 30 tickets. A route's scale is E or B, whichever is smaller; the operator's E is raised (by bisection, "water-filling") so that the totals still match published ridership. Routes where the bound binds are flagged *scaled to bus capacity (high app use)*: **1,257** routes (847 DTC, 410 cluster).
+3. **A ceiling of 3 times E.** Without it, thin cluster routes absorbed riders the model could not justify. With the ceiling, the operator scale reaches 104.4 for DTC and 231.5 for the cluster, the ceiling binds for both, and **59% of published DTC ridership and 73% of published cluster ridership is left unplaced.** We report that instead of forcing the totals to match. The ceiling was a modelling choice; 2× and 5× change 1.4% and 1.7% of levels.
+4. **People on board** L = route scale × ℓ, shown as a range that combines the sampling error (day-to-day variation) and the scale uncertainty (0.7–1.3 times the route scale, upper end capped at B). Displayed people on board are capped at the crush load, with a flag *full: real demand is likely higher*.
+
+What the caps mean: on capped routes the crowding we show is a **conservative, lower estimate**. We may under-call a crowded bus; the design avoids the opposite error.
+
+### 2.7 Levels and evidence
+
+Levels use each route's bus mix (seats, rated total, crush; Appendix B). *Usually seats*: L below 70% of seats, because reserved seats are rarely free. *Usually standing*: L up to the rated total. *Usually crowded*: L above the rated total. Mixed fleets use share-weighted thresholds.
+
+Every cell also carries an evidence state:
+- **Based on many tickets:** the level is the same across the whole range.
+- **Rough guess:** the range spans two levels, or the route is flagged *low app use* (app riders per scheduled trip below 33% of the shared-stretch median). A quiet count on a route that does sell app tickets is evidence of a quiet bus, so *Usually seats* is allowed as a rough guess.
+- **No data:** the route's app riders per scheduled trip are below the network 25th percentile, or no bus is scheduled. It is never shown as comfortable.
+
+There is no shrinkage and no bunching factor: sparse cells are handled by the wider windows and these rules.
+
+### 2.8 The planner
+
+A frequency-based round search suits buses that run to headways, not timetables; waits are half the headway from buses that really ran. The planner returns three roles:
+
+- **Fastest.**
+- **Less crowded:** within the larger of 15 minutes or 30% of the fastest, with the fewest minutes crowded and then standing, using the upper end of the range. Not offered if more than half of it is No data, or if its advantage rests on legs flagged *low app use*.
+- **Leave later** (+10 to +40 minutes): offered only if the later trip's whole range is in a better level and the route still runs.
+
+The **headline** level is the worst level the rider spends at least 5 minutes in, with the crowded stretch named. If more than 50% of the ride is No data, the headline is *No data* (it is never *Usually seats* over a mostly unknown ride). Routes with fewer than 3 scheduled trips a day are timetable-only and are not used by the planner (they remain in all tables and in the operator view). Before 5:00 and after 23:00 options are marked "timetable uncertain".
+
+### 2.9 The operator view
+
+For each route-direction and departure window, we walk one extra bus down its route at the times it reaches each stretch (buses become S + 1), and count the riders whose level improves and the *crowded rider-minutes* removed. Weekdays and weekends are ranked separately. On weekdays the best single extra trip for DTC is route **578DOWN at 08:30**, removing about 19,589 crowded rider-minutes and moving about 7,363 riders down a level; for the cluster it is **539UP at 18:30** (16,940 and 8,867). These are model estimates scaled from app tickets, not counts.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/how-it-works-dark.svg">
+    <img src="assets/how-it-works.svg" alt="One ticket becomes a crowding level in five steps" width="900">
+  </picture>
+</p>
 
 ---
 
-## 4. Empirical Validation & Citywide Commuting Patterns
+## 3. Assumptions
 
-### 4.1 Network-Wide Diurnal Peak/Off-Peak Distribution
-Weekday segment-time-slots, taken directly from `data/processed/sprint2_validation_report.json` (regenerated by `sprint2_crowding_model.py`):
+Every constant below lives in code, mostly in [`src/pipeline/config.py`](../src/pipeline/config.py), with its source. The last column is from the sensitivity runs in 6.5 (share of commuter-facing cells whose level changes).
 
-| Time Window | Time Slots ($\tau$) | Mean Crowding Score | P90 Crowding Score | % Low / Moderate / High |
-| :--- | :---: | :---: | :---: | :---: |
-| **Early Morning** | 05:00–07:30 ($\tau = 10 \dots 14$) | 0.0992 | 0.2670 | 92.4 / 4.7 / 2.9 |
-| **Morning Peak** | 08:30–10:30 ($\tau = 17 \dots 20$) | **0.1889** | **0.5939** | 82.2 / 10.2 / 7.6 |
-| **Afternoon Lull** | 13:00–15:30 ($\tau = 26 \dots 30$) | **0.0518** | **0.1018** | 98.1 / 1.4 / 0.5 |
-| **Evening Peak** | 17:30–20:00 ($\tau = 35 \dots 39$) | **0.1326** | **0.4089** | 88.2 / 7.2 / 4.6 |
-| **Late Night** | 21:30–23:30 ($\tau = 43 \dots 46$) | 0.0466 | 0.1214 | 97.1 / 2.1 / 0.7 |
-
-P90 crowding in the afternoon lull is **83% lower** than in the morning peak (0.102 vs 0.594).
-
-### 4.2 Directional Asymmetry Check
-Mean weekday crowding score per direction, morning peak (08:30–10:30) vs evening peak (17:30–20:00):
-
-| Route pair | Morning UP | Morning DOWN | Evening UP | Evening DOWN | Reading |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **`717A`** | **0.802** | 0.648 | 0.632 | **0.799** | UP busier in the morning, DOWN busier in the evening; both directions are loaded at both peaks. |
-| **`729`** | 0.302 | **0.459** | **0.413** | 0.264 | DOWN busier in the morning, UP in the evening. |
-| **`511A`** | **0.565** | 0.327 | 0.195 | **0.281** | UP clearly dominant in the morning. |
-| **`578`** | 0.201 | **0.512** | **0.301** | 0.192 | DOWN dominant in the morning, UP in the evening. |
-
-All four pairs show the busier direction switching between morning and evening peaks. The contrast is moderate (roughly 1.2–2.5×), not a full reversal, and these are 4 hand-picked routes; a network-wide test is still to be done.
+| Assumption | Value | Where | Why | If it is wrong |
+|---|---|---|---|---|
+| 12 m AC bus: seats / rated total / crush | 35 / 63 / 100 | `BUS_SPECS` | DTC e-bus tender and CESL tender (seats); Tata and Switch data sheets (rated total); DTC tenders "peak loading of over 100" (crush) | Capacity ±10%: 0.4% / 0.3% of cells |
+| 9 m DEVI bus | 23 / 36 / 42 | `BUS_SPECS` | Press reports of the DEVI order (23 seated, 13 standing); highest stated 9 m capacity | As above |
+| 12 m non-AC CNG bus | 37 / 63 / 100 | `BUS_SPECS` | The seat figure has the weakest source | As above |
+| "Comfortable capacity" alternative | 12 m 77, 9 m 32 | `BUS_SPECS` | Seats plus four standees per m², the CESL off-peak cap | 1.7% of cells |
+| *Usually seats* below this share of seats | 70% | `SEATS_FRACTION` | Reserved seats are rarely free | Not varied |
+| Scale range around a route's scale | 0.7–1.3 × | `SCALE_RANGE` | Honest width for the scale uncertainty | E −30% / +30%: 9.2% / 8.2% |
+| Capacity bound | 95th percentile, cells with 30+ tickets | `BOUND_PERCENTILE`, `BOUND_MIN_TICKETS` | Stops a thin route absorbing impossible loads | Bound off: **38.5%** |
+| Operator scale ceiling | 3 × E | `E_SCALE_CEILING_MULT` | Stops unbounded scale on thin routes; leaves ridership unplaced | 2×: 1.4%; 5×: 1.7% |
+| Load window, weekday / weekend | 90 min every 30; 120 min every 60 | `WINDOWS` | Enough tickets per cell without blurring the peak | Not varied |
+| Widen when no bus is scheduled | ±30 min, then route-hour | `SUPPLY_WIDEN_MIN` | Never divide by a floor | Gate: under 1% of volume |
+| Ticket-pair ratio window | 0.4-2.5 (alternative 0.25-4) | `PAIR_RATIO_BOUNDS` in `network.py` | Drop pairs that span two trips | DTC 18:00 factor 1.423 vs 1.521 |
+| A trip counted as run | at least 80% of stops, in order | `GPS_TRIP_STOP_SHARE` | A conservative definition of a trip that ran, fixed before we compared bus-km with the published figure; the agreement in 6.4 is an independent check that corroborates it, not the reason for the rule | Not varied |
+| GPS used for a route | at least 80% of its linked vehicles in the feed | `GPS_COVERAGE_MIN` | Avoids a share built on a few buses | Fallback chain (2.3) |
+| 9 m bus rule | route starts with D-, or at least 50% of vehicles that sell 5+ tickets on D- routes | `DEVI_ROUTE_SHARE`, `DEVI_VEHICLE_MIN_TICKETS` | The D- routes are DEVI buses; the rest is an inference | 90%: 0.4% |
+| Alighting correction | ratio clamped to 0.5–2.0; reverse uninformative under 5 boardings | `ALIGHTING_MIN_REVERSE_BOARD` | Corrects terminal asymmetry without erasing it | Correction off: 1.0% |
+| Low app use / No data | under 33% of the shared-stretch median; under the network 25th percentile | `LOW_APP_USE_FRACTION`, `NO_DATA_PERCENTILE` | Quiet is not the same as unknown | Not varied |
+| Published ridership | DTC 2,429,000, cluster 1,530,000 a day | `PUBLISHED_RIDERSHIP` | Economic Survey of Delhi 2025-26 | Scales every level; see 6.5 |
+| Planner thresholds | slack 15 min or 30%; headline from 5 min; No data above 50%; routes under 3 trips a day skipped | `config.py`, `planner.py` | Planner rules, not data | Product choices |
 
 ---
 
-## 5. Multi-Criteria McRAPTOR Routing Engine
+## 4. The brief checklist
 
-### 5.1 Generalized Discomfort Objective Function & Reliability Modeling
-For transit edge $e$ on route $r$ traversed at time $t$ with scheduled transit duration $T(e)$ and crowding score $C(e, t) \in [0, 1]$, the generalized travel cost incorporates in-vehicle travel time, crowd discomfort, empirical headway waiting time, and left-behind risk:
-$$\text{Cost}(e) = T(e) \cdot \left(1 + \beta \cdot C(e, t)^{1.5}\right) + \text{Cost}_{\text{wait}}(r, t) + \text{Cost}_{\text{deny}}(e, t) + W_{\text{transfer}}$$
-where:
-- $\beta \ge 0$ is the user discomfort weight parameter.
-- $W_{\text{transfer}} = 300\text{ s}$ (5-minute discomfort penalty per transfer) prevents trivial one-stop transfers.
-- **Empirical Headway Waiting Time**:
-  Route headway $H_{r,t}$ (clamped to $[4.0, 30.0]$ min) is derived per canonical route across 5 time-of-day windows (`Early Morning`, `Morning Peak`, `Afternoon Lull`, `Evening Peak`, `Late Night`). Expected wait is $W_{\text{base}}(r, t) = \min(15.0, 0.5 \times H_{r,t})$, weighted by a **$1.5\times$ out-of-vehicle wait perception multiplier**:
-  $$\text{Cost}_{\text{wait}}(r, t) = 1.5 \times (W_{\text{base}}(r, t) \times 60\text{s})$$
-- **Left-Behind (Boarding-Denial) Risk ($C > 0.80$)**:
-  When boarding segments operate at crush capacity ($C(e,t) > 0.80$), commuters face significant left-behind probability:
-  $$p_{\text{deny}} = \min\left(0.75,\ \max\left(0,\ \frac{C(e,t) - 0.80}{0.20}\right) \times 0.75\right)$$
-  The expected missed-bus delay $E[\Delta T_{\text{deny}}] = p_{\text{deny}} \times (H_{r,t} \times 60\text{s})$ is penalized at a **$1.7\times$ reliability multiplier** in generalized cost. Boarding risk is classified as `"High"` ($C > 0.85$), `"Moderate"` ($0.75 < C \le 0.85$), or `"Low"`.
+The Problem 2 brief names six things to handle. For each: what we did, the evidence and what risk remains.
 
-### 5.2 Footpath Transfer Topology & Opposite-Platform Access
-1. **Latitude-Window Footpath Precomputation**:
-   Using binary search (`np.searchsorted`) over sorted stop latitudes ($\pm 300\text{m} \approx \pm 0.0027^\circ$), the router indexes all **23,354 walking transfer edges** across 6,862 stops in **3.5 seconds** ($v_{\text{walk}} = 1.2\text{ m/s}$, minimum transfer buffer $= 120\text{ s}$).
-2. **400m Origin / Destination Walk-Access Radius Expansion**:
-   Dual-carriageway boulevards in Delhi (e.g., Ring Road, Outer Ring Road) place `UP` and `DOWN` bus platforms on opposite sides of wide avenues (50–150m apart). Radius expansion automatically evaluates all physical platforms within **400m (~5 min walk)** of the selected origin/destination, ensuring parallel corridor access and metro-feeder stop integration.
-3. **Road-Hugging Map Polylines (GTFS `shapes.txt` Integration)**:
-   A compact serialized lookup cache (`data/processed/route_segment_shapes.pkl`, 80,859 segments) maps each canonical stop pair `(from_stop, to_stop)` to its ordered sub-slice of shape vertices, enabling true road-following polyline rendering on Leaflet maps rather than straight-line approximations.
-
-### 5.3 Microsecond Lookups & Time-Advancement
-Segment crowding scores and travel durations are indexed into dense NumPy matrices:
-$$\text{CS}[r_{\text{idx}}, \text{seg}_{\text{idx}}, d_{\text{code}}, \tau] \in \mathbb{R}^{32}$$
-Fetching segment cost takes **$0.27\,\mu\text{s}$ ($O(1)$)**. As the journey traverses successive segments and footpaths, the current arrival time $t_{\text{arr}}$ automatically updates the active half-hour time slot $\tau = \lfloor (t_{\text{arr}} \pmod{86400}) / 1800 \rfloor$.
-
-### 5.4 Smart $\pm 15$-Minute Departure Shift Nudge
-During peak shoulder periods where the primary itinerary experiences severe crowding ($C \ge 0.45$ or `boarding_risk != "Low"`), the router conducts lightweight forward/backward evaluations at $t - 15\text{ min}$ and $t + 15\text{ min}$.
-If shifting departure time yields:
-1. Average crowding reduction $\ge 15\%$ (absolute drop $\ge 0.08$), and
-2. Travel time penalty $\le 10\%$,
-the engine attaches an actionable `departure_nudge` payload, prompting commuters to travel slightly earlier or later to bypass crush loads.
-
-### 5.4 Corridor Benchmark Comparisons
-
-#### Benchmark Corridor 1: Nehru Place $\to$ Dhaula Kuan (Weekday 09:00 AM Peak)
-- **Fastest ($\beta = 0.0$)**: Non-AC route `567AUP` (38.1 min, 0 transfers, Mean Crowding: **0.252**, Fare: ₹15).
-- **Balanced / Least Crowded ($\beta = 0.6, 1.8$)**: AC route `724EXTDOWN` (38.2 min, 0 transfers, Mean Crowding: **0.169**, Fare: ₹25).
-- **Pareto Insight**: The commuter trades **only 6 seconds of travel time** to achieve a **33% reduction in crowding** inside an air-conditioned bus.
-
-#### Benchmark Corridor 2: Ali Village $\to$ ITO (Weekday 09:00 AM Peak)
-- Direct bus connection does not exist.
-- **Planner Output**: Multimodal itinerary via `422AUP` $\to$ transfer at Nehru Place $\to$ `DS-12DOWN` $\to$ transfer at Pragati Maidan $\to$ `317UP` (24.4 min, 2 transfers, Mean Crowding: **0.072**, Fare: ₹45).
-- **Pareto Insight**: Confirms the router's capability to discover efficient, low-crowding multi-transfer combinations across complex network gaps.
+| Item in the brief | What we did | Evidence | Remaining risk |
+|---|---|---|---|
+| **Running count per trip** | Not used. We estimate people on board per stretch and half hour, then divide by buses. | App tickets are about 1.2 per scheduled trip (95,782 a weekday for 80,357 trips), so a per-trip count would be nearly all zeros and ones. | One bus can differ from the average of its window; "usually" is the claim. |
+| **Pass and free riders** | Not in app tickets. We scale app riders to published daily ridership, which we take to include them, then cap at bus capacity. | The app-share reconciliation (section 5); women's free journeys are about 43% of published ridership, rough. | App users may ride different routes and hours from free-ride and pass users; the scale is by operator and route, not by rider type. If published ridership excludes them, buses are fuller still. |
+| **Planned vs actual alighting** | A ticket gives the stop the rider paid to, not where they got off. We correct the one asymmetry we can see: terminal alightings. | Median terminal ratio 1.36; 816 routes corrected, 145,061 passengers moved; 662 routes flagged. | Mid-route differences are not measured. Correction off changes 1.0% of cells. |
+| **Bus size (12 m vs 9 m)** | Seats, rated total and crush by bus type, per route mix (Appendix B). | D- routes are DEVI 9 m buses (302 route rows, high confidence); 222 more by a vehicle rule (inference); capacity ±10% changes 0.4% of cells. | The 12 m non-AC seat count has a weak source; the vehicle rule is an inference. |
+| **Thin routes and hours** | Evidence state on every cell; wider windows; no shrinkage; No data where tickets are too few; planner skips timetable-only routes. | 4.7% of bus-km rests on many tickets, 89% is Rough guess, 6.4% No data; 603 routes are No data. | Most of the network is a Rough guess. Two weeks apart, 76% of cells keep their level. |
+| **Simple display** | Three option cards; a word, dots and a colour for every level; Hindi for chips, roles and the headline sentence; plain evidence labels; a Why? sheet. | 16 px text, 48 px tap targets, no raw percentages shown. | Not tested with real riders. Stop names stay in English as in the timetable. |
 
 ---
 
-## 6. Verification & Quality Assurance Summary
+## 5. Reconciling the app share
 
-The entire pipeline and API service are covered by automated unit and integration tests (`src/api/test_api.py`):
-1. `test_get_frontend_html`: Confirms root HTTP 200 and static dashboard bundle delivery.
-2. `test_api_health`: Validates router memory state (6,862 stops, 2,574 routes, 23,354 transfer edges).
-3. `test_stops_search_default_hubs`: Validates default 10 transit hubs (*Nehru Place, Dhaula Kuan, Kashmere Gate, etc.*).
-4. `test_stops_search_query`: Validates RapidFuzz substring and prefix stop matching.
-5. `test_plan_journey_peak_balanced`: Validates peak hour routing, itinerary schemas, and latency guarantees.
-6. `test_plan_journey_offpeak_least_crowded`: Confirms crowding score drops below 0.35 in off-peak routing.
-7. `test_validation_metrics`: Validates pipeline reporting metrics and diurnal peak JSON payloads.
-8. `test_route_profile`: Validates stop-by-stop GPS coordinate geometry and crowding curves for `717AUP`.
-9. `test_invalid_stop_plan`: Validates 404 error handling on non-existent stops.
+We say app tickets are about **1 in 44** riders, or **2.3%** of published ridership of 3,959,000 riders a day. The hackathon pages put e-ticketing at **3%–4%** of bus tickets. Both can be true, because the two shares have different bases.
 
-**Test Suite Status**: **9 PASSED in 9.18 seconds**.
+- Ours divides by *all riders* (published ridership).
+- Theirs divides by *bus tickets*, and a free ride or a pass is a rider but not a ticket.
+- If app tickets are 3% of tickets while being 2.3% of riders, then 25% of riders are outside the ticket base. At 4% it is 43%.
+- The Economic Survey reports 56.21 crore free journeys by women in 2025-26 up to February. Spread over 334 days, that is about 16.8 lakh a day, roughly 43% of published ridership. That sits inside the range above.
+
+This is consistent, not proven: pass holders are counted nowhere we can see, the period end and the year of the cluster figure differ, and the free-ride number is a rough division. What matters for the product is the direction of the error. Free and pass riders are missing from the tickets, so buses can only be **fuller** than the tickets alone suggest, and every Why? sheet says so.
+
+---
+
+## 6. Validation and independent checks
+
+**No field count was possible.** The team is in Pune and no on-bus count of Delhi buses is public. So none of the checks below measures how close a level is to the truth on a given bus. They test whether the model behaves the way an honest model of Delhi buses must, and where it does not, we say so. We never use the word "accuracy".
+
+### 6.1 Checks that stop the run (gates)
+
+| Gate | Result |
+|---|---|
+| Ticket conservation (raw = resolved + rejected, per route string) | pass |
+| Rider-minutes in the output equal the resolved tickets' rider-minutes (limit 0.5%) | pass; difference 0.020% |
+| Rider volume with no bus after the fallback (limit 1%) | pass; 0.72% |
+| Modelled hourly run times within 15% of ticket-pair run times | pass; worst 6.1% |
+| Time-zone invariance, schema, no NaN or infinity | pass |
+| The stored result is rebuilt exactly from the inputs | 3,384,288 of 3,384,288 rows identical |
+
+### 6.2 Expectations written down before the first full run
+
+`validation/expectations.yaml` was committed before any model output existed, each item with a source. Misses are reported, not tuned away.
+
+| Expectation | Result |
+|---|---|
+| Morning peak in 08–10, evening peak in 17–20 | **Hit.** Busiest hours 09:00 and 19:00 |
+| Weekend lower, flatter, with a later peak | **Hit** on all three |
+| Radial routes busier inbound in the morning, outbound in the evening | **Hit.** 79.7% and 78.3% of 359 route pairs |
+| DTC bus-km within ±20% of 501,000 a day | **Hit.** Model 496,158 (band 400,800–601,200), once GPS measured the trips that ran; the timetable alone was a miss (6.4) |
+| Fleet load factor inside the published 0.78–0.89 band | **Miss.** Model 0.54 (6.4) |
+| Ten researched corridors | 6.3 |
+| GPS stop-time activity rises with boardings and alightings | Not built in Phase 1; not counted as a miss |
+
+<p align="center"><img src="assets/fig-levels-by-hour.svg" alt="Share of weekday bus-km by crowding level, by hour of day" width="760"></p>
+
+### 6.3 The corridor check, and why 10 of 10 is weak
+
+We researched ten busy corridors without looking at our output and wrote them down: 2 strong, 4 moderate, 4 weak evidence. A corridor counts as a hit if at least one of its mapped stretches is in the top decile of weekday crowded rider-minutes per km in its stated peak.
+
+By that rule: strong 2 of 2, moderate 4 of 4, weak 4 of 4, **10 of 10 in all**. **That rule turned out to be too easy.** Each corridor maps to many stretches, so picking the same number at random would already give 10.0 of 10 hits (seeded simulation, 2000 draws per corridor, seed 25, stretches drawn without replacement from the 12,603 weekday stretches with service). We keep the rule because we pre-registered it, and report two stricter readings:
+
+- **Enrichment:** on average 19.0% of a corridor's mapped stretches are in the top decile, against 10% by chance.
+- **Both ends on the corridor:** 7 of 10 hit.
+
+<p align="center"><img src="assets/fig-corridor-check.svg" alt="Corridor check against its chance baseline" width="720"></p>
+
+### 6.4 Published figures and the load-factor bracket
+
+**Bus-km: hit, but only after we measured the trips that ran.** With the timetable alone, the same check was a miss: scheduled DTC bus-km are 1,147,445 a day, 2.29 times the 501,000 published, which implies that only about 44% of scheduled service ran. We did not tune a parameter to close that gap. We replaced the assumption that every scheduled trip runs with a measurement: the GPS trips-that-ran layer (2.3), whose rule for a run trip was fixed beforehand. With it, the share that ran is 43% (bus-km weighted) and the modelled 496,158 a day falls inside the band. Published bus-km and GPS are independent sources that agree on how much service ran, which is the best evidence we have that the bus supply is roughly right.
+
+**Load factor: miss.** Weekday passenger-km over seat-km is 0.54 for the model as it stands (DTC 0.55, cluster 0.51), below the published 0.78–0.89. The definitions differ (DTC computes load factor from revenue against seating capacity; the cluster figure uses another formula), so this is a rough check. Two cases bracket the published band:
+
+| Case | Weekday load factor |
+|---|---|
+| Model as it stands: no bus above crush load; riders no bus can carry are left unplaced | 0.54 |
+| Capacity bound off, all published ridership placed, people on board capped at crush | 1.07 |
+| Capacity bound off, all published ridership placed, uncapped | 1.70 |
+| Published band | 0.78–0.89 |
+
+Published ridership, the trips GPS shows ran, and a bus's crush capacity **do not fit together**: placing all published riders on the buses that ran needs more people per bus than a bus can hold. The model never exceeds crush load, so on capped routes the crowding it shows is a conservative lower estimate, and the true load factor lies between the two cases. We did not tune anything to close this gap.
+
+<p align="center"><img src="assets/fig-load-factor-bracket.svg" alt="The model's load factor and the full-allocation load factor around the published band" width="760"></p>
+
+### 6.5 Sensitivity: what moves the levels
+
+Share of commuter-facing cells whose level changes when one assumption moves.
+
+| Change | Cells whose level changes |
+|---|---|
+| Operator scale E down 30% | 9.2% |
+| Operator scale E up 30% | 8.2% |
+| **Capacity bound switched off** | **38.5%** |
+| "Comfortable capacity" thresholds instead of rated totals | 1.7% |
+| Bus capacity −10% / +10% | 0.4% / 0.3% |
+| 9 m vehicle rule at 90% instead of 50% | 0.4% |
+| Scale ceiling 2× / 5× instead of 3× | 1.4% / 1.7% |
+| Terminal alighting correction switched off | 1.0% |
+
+The capacity bound is the assumption that matters. Everything else moves under one cell in ten.
+
+### 6.6 Repeatability: do two different weeks agree?
+
+We split the weekdays into four blocks (5–9, 12–16, 21–23 and 26–30 October), rebuild the levels from each block alone, and compare two blocks at a time, weighted by riders. The word "accuracy" is not used.
+
+| Comparison | Result |
+|---|---|
+| **Two different weeks, each alone** (headline) | **76.2%** of rider-weighted cells keep their level; load correlation **0.78** |
+| A held-out week against the range built from the others | lands **inside our range in 62.6%** of cells |
+| One week left out of the full month (secondary) | 94.7% unchanged; correlation 0.96 |
+
+The last row looks better but is not independent: the runs share three weeks of data. The honest figure is the first one. A range that contains the held-out week only 63% of the time is **not** a confidence interval, and we do not describe it as one.
+
+**Other cross-checks.** Tickets with a vehicle number and tickets without one (two halves of the data) correlate at 0.86 on 14,299 route-hours, so the missing vehicle number does not bias what the tickets say. GPS run times against the ticket clock are in 2.2.
+
+### 6.7 What we did not validate
+
+Choice stability for alternatives with the same origin, destination and hour is not measured. The GPS stop-time check is not built. The figures above never measure a level against a real count.
+
+---
+
+## 7. Coverage and the least reliable areas
+
+Share of scheduled bus-km by level, from `coverage.csv` (both operators):
+
+| | Usually seats | Usually standing | Usually crowded | No data |
+|---|---|---|---|---|
+| Weekday 08:00–11:00 | 53.4% | 29.4% | 12.7% | 4.5% |
+| Weekday 11:00–17:00 | 80.1% | 10.3% | 2.0% | 7.5% |
+| Weekday 17:00–21:00 | 63.5% | 23.3% | 9.2% | 3.9% |
+| All weekday | 69.6% | 17.9% | 6.2% | 6.3% |
+| All weekend | 77.7% | 13.5% | 2.3% | 6.4% |
+
+93.6% of scheduled bus-km has a level riders can see; **4.7% rests on many tickets, 89.0% is a Rough guess and 6.4% is No data.**
+
+**Where to trust it least**, with the number for each:
+
+1. **Anywhere with few tickets.** Rough guess is the common case, not the exception. Weekends are thinner than weekdays.
+2. **Routes the capacity bound caps:** 1,257 routes. Their crowding is a lower estimate; 59% of DTC and 73% of cluster published ridership is unplaced, so cluster loads are, if anything, understated.
+3. **Terminal-end stretches** of the 662 alighting-sensitive routes (last 2 stretches).
+4. **No-data routes:** 603 routes fall below the network's 25th percentile of app riders per scheduled trip.
+5. **Unresolved tickets:** 139,714 tickets (94.5% resolved overall); 164 route strings with at least 50 tickets resolve under 80% and hold 5.9% of all tickets.
+6. **Special services:** 127 office-special, 65 school and 44 DAF routes run on their own pattern; the planner treats them with the rest of the network and the operator view flags them.
+7. **Bus type:** 222 route rows get their 9 m status by inference from vehicles.
+8. **Hours.** Before 5:00 and after 23:00 timetables are uncertain and we mark the options so.
+9. **Where GPS has no say.** GPS covers 1,733 of 2,574 routes; 8% of weekday bus-km uses a fallback share of trips that ran.
+10. **One month.** October 2026 includes Navratri, Dussehra and the run-up to Diwali.
+
+---
+
+## 8. Phase 2
+
+What we would do with more time, in order of how much it would change the answer:
+
+1. **Replace the scale assumption with a measurement.** A small on-bus count on a few corridors, with the transport department's help, would turn the unverifiable step (2.6) into a calibrated one.
+2. **More months of tickets**, so more cells move from Rough guess to many tickets and seasonal effects can be separated.
+3. **Link a ticket to its exact trip with GPS stop times** (the stop-time check we designed and did not build), to replace the share-that-ran estimate with a per-trip one and to settle which clock, ticket or GPS, is right.
+4. **Use free-ride and pass counts** if the operator can share them by route, to scale by rider type.
+5. **Live arrivals and live load per bus**, so levels become "now" as well as "usually".
+6. **Full Hindi stop search** and user testing with real riders.
+7. **A hosted service** that can serve many riders at once, in place of the free static demo.
+
+---
+
+## Appendix
+
+### A. Tickets that did not resolve
+
+| Reason | Tickets |
+|---|---|
+| Stop name matched no stop on the route | 62,309 |
+| Route string matched no route | 36,819 |
+| Alighting stop before boarding stop (reversed) | 20,604 |
+| Two stops equally likely (ambiguous) | 16,245 |
+| Boarding and alighting stop the same | 3,737 |
+| **Total rejected** | **139,714** |
+
+### B. Bus specifications
+
+| Bus | Seats | Rated total | Crush | Comfortable |
+|---|---|---|---|---|
+| 12 m AC (electric or CNG) | 35 | 63 | 100 | 77 |
+| 9 m DEVI | 23 | 36 | 42 | 32 |
+| 12 m non-AC CNG | 37 | 63 | 100 | 79 |
+
+Route bus mix is decided by: DEVI route name (302 route rows); the vehicle rule (222); the bus's AC flag in tickets (1331); otherwise the default (719).
+
+### C. Glossary
+
+- **Stretch.** The road between two consecutive stops of a route.
+- **Window.** A centred 90-minute span, reported every 30 minutes on weekdays.
+- **People on board (L).** Estimated people on a bus on a stretch in a window, with a range.
+- **Rated total.** Seats plus the standing places a bus is rated to carry. **Crush load** is the most it can physically hold.
+- **Crowded rider-minutes.** Riders on Usually-crowded cells times the minutes they spend there.
+- **Evidence state.** *Based on many tickets*, *Rough guess* or *No data*.
+
+### D. Reproduce
+
+```bash
+git clone https://github.com/ThatAnacondaGuy/Delhi-Bus-Crowd-Planner && cd Delhi-Bus-Crowd-Planner
+uv venv --python 3.12 && source .venv/bin/activate && uv pip install -r requirements.lock
+# put October-Delhi.csv in data/raw/ and the GTFS folder in data/raw/gtfs/
+python -m src.pipeline.run        # resumable; the last stage renders this note
+python -m pytest
+```
+
+### E. Sources
+
+- Economic Survey of Delhi 2025-26, chapter 12 (transport): <https://delhiplanning.delhi.gov.in/sites/default/files/Planning/12_chapter_12_transport.pdf>
+- CAG, Performance audit of DTC, Report 4 of 2024.
+- DTC e-bus tender (cl. 28.2), CESL tender, JBM Ecolife release, PTI report on DEVI buses (seats and capacities).
+- Transport Stack hackathon pages and Problem 2 brief: <https://delhi.transportstack.in/hackathon/>
+
+<sub>**Data: Transport Stack / IIIT Delhi; ticketing from ONDC e-ticketing.** Aggregates only: no ticket-level or vehicle-level data is published.</sub>

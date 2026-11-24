@@ -1,0 +1,158 @@
+{
+ "data_version": "20261119-0355-225e62fd",
+ "query": {
+  "from": {
+   "id": "place:1",
+   "name": "Alpha Terminal"
+  },
+  "to": {
+   "id": "place:5",
+   "name": "Echo Depot"
+  },
+  "depart": "08:00",
+  "day": "weekday"
+ },
+ "options": [
+  {
+   "roles": [
+    "fastest"
+   ],
+   "depart": "08:00",
+   "arrive": "08:28",
+   "minutes": 28,
+   "changes": 0,
+   "fare_inr": 15,
+   "headline": {
+    "level": "standing",
+    "evidence": "many_tickets",
+    "stretch": {
+     "from": "Alpha Terminal",
+     "to": "Echo Depot",
+     "minutes": 20
+    }
+   },
+   "tradeoff": "Fastest",
+   "timetable_uncertain": false,
+   "legs": [
+    {
+     "mode": "bus",
+     "route": "101UP",
+     "bus_type": "12m_ac",
+     "from": {
+      "stop_id": "1",
+      "name": "Alpha Terminal"
+     },
+     "to": {
+      "stop_id": "5",
+      "name": "Echo Depot"
+     },
+     "depart": "08:08",
+     "arrive": "08:28",
+     "segments": [
+      {
+       "from_stop_id": "1",
+       "to_stop_id": "2",
+       "minutes": 5.0,
+       "level": "standing",
+       "evidence": "many_tickets",
+       "people": [
+        40,
+        45,
+        50
+       ],
+       "seats": 35,
+       "rated_total": 63,
+       "flags": [],
+       "coords": [
+        [
+         28.6,
+         77.2
+        ],
+        [
+         28.61349,
+         77.2
+        ]
+       ]
+      },
+      {
+       "from_stop_id": "2",
+       "to_stop_id": "3",
+       "minutes": 5.0,
+       "level": "standing",
+       "evidence": "many_tickets",
+       "people": [
+        40,
+        45,
+        50
+       ],
+       "seats": 35,
+       "rated_total": 63,
+       "flags": [],
+       "coords": [
+        [
+         28.61349,
+         77.2
+        ],
+        [
+         28.62698,
+         77.2
+        ]
+       ]
+      },
+      {
+       "from_stop_id": "3",
+       "to_stop_id": "4",
+       "minutes": 5.0,
+       "level": "standing",
+       "evidence": "many_tickets",
+       "people": [
+        40,
+        45,
+        50
+       ],
+       "seats": 35,
+       "rated_total": 63,
+       "flags": [],
+       "coords": [
+        [
+         28.62698,
+         77.2
+        ],
+        [
+         28.64047,
+         77.2
+        ]
+       ]
+      },
+      {
+       "from_stop_id": "4",
+       "to_stop_id": "5",
+       "minutes": 5.0,
+       "level": "standing",
+       "evidence": "many_tickets",
+       "people": [
+        40,
+        45,
+        50
+       ],
+       "seats": 35,
+       "rated_total": 63,
+       "flags": [],
+       "coords": [
+        [
+         28.64047,
+         77.2
+        ],
+        [
+         28.65396,
+         77.2
+        ]
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "notes": []
+}
