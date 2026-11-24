@@ -207,6 +207,6 @@ The aim is the same product with the evidence getting stronger: more months of t
 
 ## Team
 
-**Aniket Ingale** and **Ashish Maurya (Ash)**, Pune. Transport Stack Hackathon 2026, Problem 2: a crowdedness-aware journey planner for Delhi buses.
+**Team Kshama**: **Aniket Ingale** and **Ashish Maurya (Ash)**, Pune. Transport Stack Hackathon 2026, Problem 2: a crowdedness-aware journey planner for Delhi buses.
 
 <sub>MIT licence. Built with Python, DuckDB, pandas, FastAPI and plain JavaScript.</sub>

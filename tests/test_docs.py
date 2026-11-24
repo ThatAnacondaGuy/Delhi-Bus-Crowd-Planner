@@ -156,7 +156,7 @@ def test_readme_has_the_hero_demo_and_animated_diagrams():
     assert "https://huggingface.co/spaces/ThatAnacondaGuy/delhi-bus-crowd-planner" in text
     assert "https://github.com/ThatAnacondaGuy/Delhi-Bus-Crowd-Planner" in text
     assert "prefers-color-scheme: dark" in text and "architecture-dark.svg" in text and "how-it-works-dark.svg" in text
-    assert "Aniket Ingale" in text and "Ashish Maurya" in text
+    assert "Aniket Ingale" in text and "Ashish Maurya" in text and "Team Kshama" in text
     for level in ("Usually seats", "आमतौर पर सीट मिल जाती है", "Usually crowded", "आमतौर पर भारी भीड़", "No data", "जानकारी नहीं"):
         assert level in text, level
 
@@ -349,3 +349,16 @@ def test_proposal_keeps_how_it_works_together_and_the_pdf_is_still_short():
     start = md.index('<div class="keep">')
     assert md.index("## How it works") > start and md.index("architecture.svg") > md.index("## How it works")
     assert "break-inside: avoid" in (DOCS / "make_proposal_pdf.py").read_text(encoding="utf-8")
+
+
+def test_team_name_is_in_the_proposal_and_the_technical_note():
+    for path in (PROPOSAL, NOTE):
+        assert "Team Kshama" in path.read_text(encoding="utf-8"), path.name
+
+
+def test_forbidden_terms_are_absent_from_diagrams_and_deploy_readmes():
+    extra = sorted((DOCS / "assets").glob("*.svg")) + sorted((REPO / "deploy").glob("*README*.md"))
+    assert extra
+    for path in extra:
+        low = path.read_text(encoding="utf-8").lower()
+        assert not [w for w in FORBIDDEN if w in low], path.name

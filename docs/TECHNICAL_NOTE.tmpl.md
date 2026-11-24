@@ -5,7 +5,7 @@
 
 ### How we estimate how crowded a Delhi bus stretch usually is, and how far to trust it
 
-Transport Stack Hackathon 2026 · Phase 1 · Problem 2 · Aniket Ingale and Ashish Maurya (Ash)
+Transport Stack Hackathon 2026 · Phase 1 · Problem 2 · Team Kshama: Aniket Ingale and Ashish Maurya (Ash)
 
 <sub>Run `{{run_id}}` · code `{{code_version}}` · finished {{pipeline_finished_ist}} IST · every number below is read from that run</sub>
 
