@@ -1,45 +1,40 @@
+// Scene 2: the name and the promise. Title on phrase 0, tagline on phrase 1, the four level chips pop on phrase 2
+// ("before you board"), each with its pop. A stylised city map draws itself behind, its corridor glowing.
 import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
-import { C, outCubic, prog, springSoft } from "../theme";
-import { Caption, Chip, FadeIn, Scene, Sfx, Words } from "../components/ui";
-import { sceneCaptionSpans } from "../captions";
-import { LEAD_FRAMES } from "../timing";
-import { useAssets } from "../assets";
-import type { Level } from "../theme";
+import { C, CONTENT, Level, TYPE, prog, springSoft } from "../design";
+import { Backdrop, Captions, Kinetic, PopChip, SceneShell, Sfx, StylisedMap, useBeats } from "../components/kit";
 
 const FAMILY: Level[] = ["seats", "standing", "crowded", "no_data"];
 
 export const Scene02: React.FC = () => {
   const f = useCurrentFrame();
   const { fps, durationInFrames: D } = useVideoConfig();
-  const { vo } = useAssets();
-  const wipe = prog(f, 0, 15, outCubic);
-  const spans = sceneCaptionSpans(2, { voFrames: vo[1] != null ? Math.round(vo[1]! * 30) : null, duration: D, base: 270, lead: LEAD_FRAMES });
+  const { beat } = useBeats();
+  const titleAt = beat(0) - 4;
+  const tagAt = beat(1);
+  const chipsAt = beat(2);
+  const lift = springSoft(f, fps, tagAt - 6, 26);
   return (
-    <Scene fadeOut={12} bg={C.paper}>
-      <div style={{ position: "absolute", inset: 0, background: C.paper, clipPath: `inset(0 ${(1 - wipe) * 100}% 0 0)` }}>
-        <div style={{ position: "absolute", top: 230, left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <Words text="Delhi Bus Crowding Planner" size={116} color={C.blue} start={0} gap={8} rise={24} dur={12} />
-          <FadeIn at={60} dur={12} rise={10} style={{ marginTop: 34, textAlign: "center", fontSize: 50, color: C.ink, lineHeight: 1.25 }}>
-            <div>How crowded each stretch of your trip usually is,</div>
-          </FadeIn>
-          <FadeIn at={72} dur={12} rise={10} style={{ textAlign: "center", fontSize: 50, color: C.ink, lineHeight: 1.25 }}>
-            <div>before you board.</div>
-          </FadeIn>
-          <div style={{ display: "flex", gap: 26, marginTop: 70 }}>
-            {FAMILY.map((lv, i) => {
-              const t = springSoft(f, fps, 120 + i * 6, 20);
-              return (
-                <div key={lv} style={{ opacity: t, transform: `scale(${0.5 + 0.5 * t})` }}>
-                  <Chip level={lv} size={38} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
+    <SceneShell>
+      <Backdrop tint={[C.blue, C.teal, "#3b2a5c"]} />
+      <StylisedMap draw={prog(f, 0, D * 0.9)} glow={prog(f, tagAt, 40)} opacity={0.55} />
+      <div style={{ position: "absolute", left: CONTENT.left, top: 300 - lift * 70, width: CONTENT.width }}>
+        <Kinetic text="Delhi Bus Crowding Planner" at={titleAt} size={TYPE.display} width={CONTENT.width} maxLines={1} stagger={5} align="center" accent={{ crowding: C.tealGlow }} />
       </div>
-      <Caption spans={spans} bottom={44} />
-      <Sfx name="chime" at={4} volume={0.9} />
-    </Scene>
+      <div style={{ position: "absolute", left: (1920 - 1300) / 2, top: 440 - lift * 50, width: 1300 }}>
+        <Kinetic text="How crowded each stretch of your trip usually is, before you board." at={tagAt} size={TYPE.h2} width={1300} maxLines={2} stagger={2} weight={500} align="center" color={C.textDim} accent={{ usually: C.text }} />
+      </div>
+      <div style={{ position: "absolute", left: CONTENT.left, top: 650, width: CONTENT.width, height: 80, display: "flex", justifyContent: "center", alignItems: "center", gap: 24 }}>
+        {FAMILY.map((lv, i) => (
+          <PopChip key={lv} level={lv} at={chipsAt + i * 6} size={TYPE.body} style={{ transformOrigin: "center" }} />
+        ))}
+      </div>
+      <Captions />
+      <Sfx name="chime" at={titleAt + 2} volume={0.6} />
+      {FAMILY.map((_, i) => (
+        <Sfx key={i} name="pop" at={chipsAt + i * 6} volume={0.45} />
+      ))}
+    </SceneShell>
   );
 };

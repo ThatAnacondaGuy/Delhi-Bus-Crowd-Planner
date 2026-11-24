@@ -46,8 +46,28 @@ for (const f of sfx) {
   const l = lufs(path.join(PUBLIC, "sfx", f));
   sfxTrim[f] = l == null ? 1 : Math.min(1, +db(SFX_REF_LUFS - l).toFixed(4));
 }
-const clips = list("clips", /\.(mp4|mov|webm)$/i);
+// Speech segments come from the pauses in each clean voice file (src/sync.ts): silencedetect at -35 dB, at least 0.2 s.
+// The silences are stored per scene, in seconds from the start of the clean file.
+const SIL_NOISE = "-35dB";
+const SIL_MIN = 0.2;
+function silences(file) {
+  const r = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-af", `silencedetect=noise=${SIL_NOISE}:d=${SIL_MIN}`, "-f", "null", "-"], { encoding: "utf8" });
+  const out = [];
+  let start = null;
+  for (const line of (r.stderr ?? "").split("\n")) {
+    const a = line.match(/silence_start: (-?[0-9.]+)/);
+    const b = line.match(/silence_end: ([0-9.]+)/);
+    if (a) start = Math.max(0, parseFloat(a[1]));
+    if (b && start != null) {
+      out.push([+start.toFixed(3), +parseFloat(b[1]).toFixed(3)]);
+      start = null;
+    }
+  }
+  return out;
+}
+const silence = {};
+for (const f of vo) silence[f.slice(6, 8)] = silences(path.join(PUBLIC, "vo/clean", f));
 
 fs.mkdirSync(PUBLIC, { recursive: true });
-fs.writeFileSync(path.join(PUBLIC, "assets.json"), JSON.stringify({ vo, parts, music, musicTrim, sfx, sfxTrim, clips }, null, 1) + "\n");
-console.log(`assets: ${vo.length}/9 voice files, music ${music.length ? music.join(" + ") : "none"}, ${sfx.length} sound effects, ${clips.length} clips`);
+fs.writeFileSync(path.join(PUBLIC, "assets.json"), JSON.stringify({ vo, parts, silence, music, musicTrim, sfx, sfxTrim }, null, 1) + "\n");
+console.log(`assets: ${vo.length}/9 voice files, music ${music.length ? music.join(" + ") : "none"}, ${sfx.length} sound effects`);

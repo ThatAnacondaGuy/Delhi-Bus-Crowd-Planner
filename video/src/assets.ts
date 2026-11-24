@@ -8,6 +8,8 @@ export type Assets = {
   vo: (number | null)[];
   /** start of each of the five planner parts in scene 5, seconds, when found by prep_audio.sh */
   parts: number[] | null;
+  /** silences detected in each clean voice file ([start, end] seconds), per scene index 0..8 (null when no voice) */
+  silence: ([number, number][] | null)[];
   /** music tracks in play order (public/music-1.mp3, music-2.mp3 ...): the second crossfades in near 1:55 */
   music: string[];
   /** length in seconds of each music track */
@@ -17,10 +19,9 @@ export type Assets = {
   sfx: string[];
   /** linear trim per sound effect file that tames the loud ones (measured by scan_assets.mjs); missing = 1 */
   sfxTrim: Record<string, number>;
-  clips: string[];
 };
 
-export const NO_ASSETS: Assets = { vo: Array(9).fill(null), parts: null, music: [], musicSeconds: [], musicTrim: [], sfx: [], sfxTrim: {}, clips: [] };
+export const NO_ASSETS: Assets = { vo: Array(9).fill(null), parts: null, silence: Array(9).fill(null), music: [], musicSeconds: [], musicTrim: [], sfx: [], sfxTrim: {} };
 
 export const AssetsContext = createContext<Assets>(NO_ASSETS);
 export const useAssets = () => useContext(AssetsContext);
@@ -28,11 +29,11 @@ export const useAssets = () => useContext(AssetsContext);
 type Listing = {
   vo: string[];
   parts?: number[] | null;
+  silence?: Record<string, [number, number][]>;
   music: string[] | string | null;
   musicTrim?: number[];
   sfx: string[];
   sfxTrim?: Record<string, number>;
-  clips: string[];
 };
 
 /** Called from calculateMetadata: reads assets.json and the length of each clean voice file. Never throws. */
@@ -69,11 +70,11 @@ export async function loadAssets(): Promise<Assets> {
   return {
     vo,
     parts: Array.isArray(listing.parts) && listing.parts.length === 5 ? listing.parts : null,
+    silence: Array.from({ length: 9 }, (_, i) => listing!.silence?.[String(i + 1).padStart(2, "0")] ?? null),
     music,
     musicSeconds,
     musicTrim: music.map((_, i) => listing!.musicTrim?.[i] ?? 1),
     sfx: listing.sfx ?? [],
     sfxTrim: listing.sfxTrim ?? {},
-    clips: listing.clips ?? [],
   };
 }

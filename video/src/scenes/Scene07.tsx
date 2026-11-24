@@ -1,198 +1,237 @@
+// Scene 7: the evidence. The checklist written first (phrase 0); every row arrives (1); peaks and weekends tick (2);
+// bus-km and the rest tick (3); the load factor flips to a Miss (4); the number line (5); the corridor row (6) is struck
+// through as chance alone gives ten of ten (7); "No field count was possible." (8) alone on the screen.
 import React from "react";
-import { useVideoConfig } from "remotion";
+import { useCurrentFrame, useVideoConfig } from "remotion";
 import N from "../numbers.json";
-import { C, fmt, inOutCubic, lerp, outCubic, prog, springSoft } from "../theme";
-import { Caption, Scene, Sfx, useClock } from "../components/ui";
-import { sceneCaptionSpans } from "../captions";
-import { LEAD_FRAMES } from "../timing";
-import { useAssets } from "../assets";
+import { C, RADIUS, SHADOW, TYPE, W, clamp01, fmt, inOutCubic, lerp, outCubic, prog, springPop, springSoft } from "../design";
+import { Backdrop, Captions, Chapter, FitText, Kinetic, SceneShell, Sfx, textWidth, useBeats } from "../components/kit";
 
-const CARD_X = 300;
-const CARD_W = 1320;
+const CARD = { x: 210, y: 96, w: 1500, h: 784 };
+const PADX = 48;
+const INNER = CARD.w - 2 * PADX;
 
-type RowProps = { u: number; y: number; h?: number; appear: number; fillAt?: number; text: React.ReactNode; tag?: string; kind?: "hit" | "miss"; dim?: number; size?: number };
+const Tick: React.FC<{ t: number; kind: "hit" | "miss"; size: number }> = ({ t, kind, size }) => {
+  const col = kind === "hit" ? C.teal : C.red;
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" style={{ flex: "none" }}>
+      <circle cx="20" cy="20" r="17" fill={t > 0.05 ? col : "none"} stroke={t > 0.05 ? col : "#b7bcc1"} strokeWidth="3" />
+      {kind === "hit" ? (
+        <path d="M11 21 L18 28 L30 13" fill="none" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray={40} strokeDashoffset={40 * (1 - t)} />
+      ) : (
+        <>
+          <path d="M13 13 L27 27" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" strokeDasharray={20} strokeDashoffset={20 * (1 - Math.min(1, t * 2))} />
+          <path d="M27 13 L13 27" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" strokeDasharray={20} strokeDashoffset={20 * (1 - Math.max(0, t * 2 - 1))} />
+        </>
+      )}
+    </svg>
+  );
+};
 
-const Row: React.FC<RowProps> = ({ u, y, h = 58, appear, fillAt, text, tag, kind = "hit", dim = 1, size = 32 }) => {
-  const a = prog(u, appear, 12, outCubic);
-  const filled = fillAt === undefined ? 0 : prog(u, fillAt, 12, outCubic);
+/** One checklist row: appears on `appear`, fills and ticks on `fill`. */
+const Row: React.FC<{ text: string; appear: number; fill: number; y: number; h: number; size: number; dim?: number; kind?: "hit" | "miss"; tag?: string }> = ({ text, appear, fill, y, h, size, dim = 1, kind = "hit", tag }) => {
+  const f = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const a = springSoft(f, fps, appear, 16);
+  const t = prog(f, fill, 12, outCubic);
   const col = kind === "hit" ? C.teal : C.red;
   const bg = kind === "hit" ? C.tealBg : C.redBg;
-  const draw = fillAt === undefined ? 0 : prog(u, fillAt, 14, outCubic);
+  const tagW = tag ? 120 : 0;
   return (
     <div
       style={{
         position: "absolute",
         left: 0,
         top: y,
-        width: "100%",
+        width: INNER,
         height: h,
         display: "flex",
         alignItems: "center",
-        gap: 22,
-        padding: "0 22px",
-        borderRadius: h / 2,
-        border: `3px solid ${filled > 0.05 ? col : "#b7bcc1"}`,
-        background: filled > 0 ? `color-mix(in srgb, ${bg} ${Math.round(filled * 100)}%, white)` : "white",
-        opacity: a * dim,
-        transform: `translateY(${(1 - a) * 14}px)`,
+        gap: 18,
+        padding: "0 24px",
         boxSizing: "border-box",
+        borderRadius: h / 2,
+        border: `3px solid ${t > 0.05 ? col : "#c9ccd1"}`,
+        background: `color-mix(in srgb, ${bg} ${Math.round(t * 100)}%, #ffffff)`,
+        opacity: a * dim,
+        transform: `translateY(${(1 - a) * 16}px)`,
       }}
     >
-      <svg width={size + 8} height={size + 8} viewBox="0 0 40 40" style={{ flex: "none" }}>
-        <circle cx="20" cy="20" r="17" fill="none" stroke={filled > 0.05 ? col : "#b7bcc1"} strokeWidth="3.5" />
-        {kind === "hit" ? (
-          <path d="M11 21 L18 28 L30 12" fill="none" stroke={col} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray={40} strokeDashoffset={40 * (1 - draw)} />
-        ) : (
-          <>
-            <path d="M12 12 L28 28" stroke={col} strokeWidth="5" strokeLinecap="round" strokeDasharray={24} strokeDashoffset={24 * (1 - Math.min(1, draw * 2))} />
-            <path d="M28 12 L12 28" stroke={col} strokeWidth="5" strokeLinecap="round" strokeDasharray={24} strokeDashoffset={24 * (1 - Math.max(0, draw * 2 - 1))} />
-          </>
-        )}
-      </svg>
-      <div style={{ fontSize: size, fontWeight: 700, color: C.ink, flex: 1, lineHeight: 1.1 }}>{text}</div>
-      {tag ? <div style={{ fontSize: size, fontWeight: 700, color: col, opacity: filled }}>{tag}</div> : null}
+      <Tick t={t} kind={kind} size={h * 0.62} />
+      <FitText text={text} size={size} width={INNER - 48 - h * 0.62 - 18 - tagW - 18} weight={600} color={C.ink} />
+      {tag ? <div style={{ width: tagW, textAlign: "right", fontSize: TYPE.label, fontWeight: 800, color: col, opacity: t }}>{tag}</div> : null}
     </div>
   );
 };
 
-const pct = (v: number) => `${v}%`;
-
 export const Scene07: React.FC = () => {
-  const u = useClock(900);
+  const f = useCurrentFrame();
   const { fps, durationInFrames: D } = useVideoConfig();
-  const { vo } = useAssets();
+  const { beat, cue } = useBeats();
+  const b = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => beat(i));
 
-  // phases
-  const dimHits = lerp(1, 0.35, prog(u, 420, 16));
-  const phaseB = prog(u, 438, 12) * (1 - prog(u, 622, 10));
-  const phaseC = prog(u, 636, 12) * (1 - prog(u, 806, 10));
-  const dimAll = prog(u, 812, 16);
-  const closing = prog(u, 820, 20, outCubic);
+  const card = springSoft(f, fps, b[0] - 8, 26);
+  const lock = prog(f, b[0] + 30, 8, outCubic);
+  // the hit rows: full size, then compact and dim when the miss arrives
+  const compact = prog(f, b[4] - 6, 16, inOutCubic);
+  const rowH = lerp(72, 46, compact);
+  const rowGap = lerp(14, 8, compact);
+  const rowSize = Math.round(lerp(TYPE.caption, TYPE.label, compact));
+  const hitDim = lerp(1, 0.55, compact);
+  const span1 = Math.max(20, cue(1).to - b[1]);
+  const hits = [
+    { text: `Peaks ${N.peaks[0]} and ${N.peaks[1]}`, fill: b[2] + 4 },
+    { text: "Weekends lower and flatter", fill: b[2] + 16 },
+    { text: `Direction: ${N.radial_am_pct}% of ${N.radial_pairs} route pairs in the morning, ${N.radial_pm_pct}% in the evening`, fill: b[3] + 14 },
+    { text: `Bus-km ${fmt(N.bus_km_model)} against ${fmt(N.bus_km_published)} published`, fill: b[3] + 2 },
+    { text: `Two different weeks: ${N.week_keep_pct}% keep their level · load correlation ${N.week_load_corr}`, fill: b[3] + 24 },
+  ];
+  const ROWS_TOP = 110;
+  const missTop = ROWS_TOP + 5 * (46 + 8) + 14;
+  const missWord = springPop(f, fps, beat(4, 0.45));
 
-  // number line: 0.40 .. 1.90
-  const NL_X = 60;
-  const NL_W = CARD_W - 2 * 60 - 40;
-  const nx = (v: number) => NL_X + ((v - 0.4) / 1.5) * NL_W;
+  // number line (phrase 5)
+  const nlOn = prog(f, b[5] - 4, 12) * (1 - prog(f, b[6] - 8, 10));
+  const NL = { x: 60, w: INNER - 120, y: 84 };
+  const nx = (v: number) => NL.x + ((v - 0.4) / 1.5) * NL.w;
   const model = Number(N.load_factor_model);
   const bandLo = Number(N.load_band_low);
   const bandHi = Number(N.load_band_high);
-  const full = Number(N.load_full_allocation);
-  const lineT = prog(u, 470, 30, inOutCubic);
+  const fullAlloc = Number(N.load_full_allocation);
+  const lineT = prog(f, b[5], 18, inOutCubic);
 
-  const missRow = prog(u, 420, 12);
-  const missWord = springSoft(u, fps, 446, 18);
+  // corridor row (phrases 6 and 7)
+  const corOn = prog(f, b[6] - 4, 12);
+  const corText = `${N.corridor_hits_total} of ${N.corridors_total} corridors`;
+  const corTextW = textWidth(corText, TYPE.caption, 600);
+  const strike = prog(f, b[7], 14, outCubic);
 
-  const spans = sceneCaptionSpans(7, { voFrames: vo[6] != null ? Math.round(vo[6]! * 30) : null, duration: D, base: 900, lead: LEAD_FRAMES });
-
-  const hits: { at: number; text: React.ReactNode }[] = [
-    { at: 120, text: `Peaks ${N.peaks[0]} and ${N.peaks[1]}` },
-    { at: 165, text: "Weekends lower and flatter" },
-    { at: 210, text: `Direction: ${pct(N.radial_am_pct)} of ${N.radial_pairs} route pairs in the morning, ${pct(N.radial_pm_pct)} in the evening` },
-    { at: 255, text: `Bus-km ${fmt(N.bus_km_model)} against ${fmt(N.bus_km_published)} published` },
-    { at: 300, text: `Two different weeks: ${pct(N.week_keep_pct)} keep their level · load correlation ${N.week_load_corr}` },
-  ];
+  // the closing sentence (phrase 8)
+  const closing = prog(f, b[8] - 6, 14, inOutCubic);
 
   return (
-    <Scene bg={C.dusk} fadeIn={12} fadeOut={12}>
-      <div style={{ position: "absolute", inset: 0, background: `radial-gradient(1200px 700px at 50% 20%, ${C.duskBlue}, ${C.dusk})` }} />
-      <div style={{ position: "absolute", left: CARD_X, top: 48, width: CARD_W, height: 850, background: C.paper, borderRadius: 36, boxShadow: "0 30px 90px rgba(0,0,0,0.5)", opacity: 1 - dimAll * 0.9, padding: "34px 40px 0", boxSizing: "border-box" }}>
-        {/* title and the file with its lock */}
-        <div style={{ display: "flex", alignItems: "center", gap: 26, opacity: prog(u, 0, 12, outCubic), height: 70 }}>
-          <div style={{ fontSize: 48, fontWeight: 700, color: C.blue, flex: 1, lineHeight: 1.05, whiteSpace: "nowrap" }}>Written down before the first full run</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 32, fontWeight: 700, color: C.ink, background: C.white, border: `3px solid ${C.grey}`, borderRadius: 16, padding: "6px 16px", transform: `translateX(${(1 - prog(u, 16, 20, outCubic)) * 300}px)` }}>
-            <span>expectations.yaml</span>
-            <svg width="34" height="40" viewBox="0 0 34 40">
-              <path d="M9 18 V12 a8 8 0 0 1 16 0 V18" fill="none" stroke={C.ink} strokeWidth="4" strokeLinecap="round" transform={`translate(0 ${(1 - prog(u, 44, 9)) * -6})`} />
+    <SceneShell>
+      <Backdrop tint={["#3b2a5c", C.blue, "#5a1d1d"]} />
+      <Chapter n="05" text="The evidence" />
+      <div
+        style={{
+          position: "absolute",
+          left: CARD.x,
+          top: CARD.y,
+          width: CARD.w,
+          height: CARD.h,
+          padding: `32px ${PADX}px`,
+          boxSizing: "border-box",
+          borderRadius: RADIUS.xl,
+          background: C.paper,
+          boxShadow: SHADOW.float,
+          opacity: card * lerp(1, 0.05, closing),
+          filter: closing > 0 ? `blur(${6 * closing}px)` : undefined,
+          transform: `translateY(${(1 - card) * 60 + closing * 30}px) scale(${lerp(1, 0.94, closing)})`,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 24, height: 64 }}>
+          <FitText text="Written down before the first full run" size={TYPE.h2} width={INNER - 380} weight={800} color={C.blue} />
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12, padding: "8px 18px", borderRadius: RADIUS.md, border: `2px solid ${C.grey}`, background: C.white, fontSize: TYPE.label, fontWeight: 700, color: C.ink, whiteSpace: "nowrap" }}>
+            expectations.yaml
+            <svg width="30" height="36" viewBox="0 0 34 40">
+              <path d="M9 18 V12 a8 8 0 0 1 16 0 V18" fill="none" stroke={C.ink} strokeWidth="4" strokeLinecap="round" transform={`translate(0 ${(1 - lock) * -7})`} />
               <rect x="4" y="18" width="26" height="20" rx="4" fill={C.ink} />
             </svg>
           </div>
         </div>
 
-        <div style={{ position: "relative", marginTop: 18, height: 740 }}>
+        <div style={{ position: "relative", marginTop: 0 }}>
           {hits.map((h, i) => (
-            <Row key={i} u={u} y={i * 66} h={58} appear={60 + i * 12} fillAt={h.at} text={h.text} dim={dimHits} />
+            <Row key={i} text={h.text} appear={Math.min(b[0] + 30 + i * 8, b[1] + (i * span1) / 6)} fill={h.fill} y={ROWS_TOP - 64 + i * (rowH + rowGap)} h={rowH} size={rowSize} dim={hitDim} tag="Hit" />
           ))}
-          <Sfx name="tap" at={120} volume={0.4} />
-          <Sfx name="tap" at={165} volume={0.4} />
-          <Sfx name="tap" at={210} volume={0.4} />
-          <Sfx name="tap" at={255} volume={0.4} />
-          <Sfx name="tap" at={300} volume={0.4} />
 
           {/* the miss */}
-          <div style={{ position: "absolute", left: 0, top: 346, width: "100%", opacity: missRow }}>
-            <Row u={u} y={0} h={100} appear={420} fillAt={448} kind="miss" size={40} text={`Load factor ${N.load_factor_model} · published ${N.load_band}`} dim={1 - dimAll * 0} />
-            <div style={{ position: "absolute", right: 34, top: -6, fontSize: 112, fontWeight: 700, color: C.red, transform: `scale(${0.4 + 0.6 * missWord})`, transformOrigin: "right center", opacity: missWord, lineHeight: 1 }}>Miss</div>
+          <div style={{ position: "absolute", left: 0, top: missTop - 64, width: INNER, height: 96, opacity: prog(f, b[4] - 2, 10) }}>
+            <Row text={`Load factor ${N.load_factor_model} · published ${N.load_band}`} appear={b[4] - 2} fill={beat(4, 0.45)} y={0} h={96} size={TYPE.body} kind="miss" />
+            <div style={{ position: "absolute", right: 36, top: 0, height: 96, display: "flex", alignItems: "center", fontSize: TYPE.h1, fontWeight: 900, color: C.red, transform: `scale(${0.3 + 0.7 * missWord})`, transformOrigin: "right center", opacity: clamp01(missWord * 2), letterSpacing: -1 }}>
+              Miss
+            </div>
           </div>
 
           {/* number line */}
-          <div style={{ position: "absolute", left: 0, top: 452, width: "100%", height: 260, opacity: phaseB }}>
-            <svg width={CARD_W - 80} height={260} style={{ overflow: "visible" }}>
-              <line x1={NL_X} y1={120} x2={NL_X + NL_W * lineT} y2={120} stroke={C.grey} strokeWidth={5} strokeLinecap="round" />
-              {/* published band */}
-              <rect x={nx(bandLo)} y={96} width={(nx(bandHi) - nx(bandLo)) * lineT} height={48} rx={8} fill={C.teal} />
-              <text x={nx((bandLo + bandHi) / 2) + 40} y={66} textAnchor="middle" fontSize={34} fontWeight={700} fill={C.teal} opacity={lineT > 0.8 ? 1 : 0}>
+          <div style={{ position: "absolute", left: 0, top: missTop - 64 + 108, width: INNER, height: 224, opacity: nlOn }}>
+            <svg width={INNER} height={224} style={{ overflow: "visible" }}>
+              <line x1={NL.x} y1={NL.y} x2={NL.x + NL.w * lineT} y2={NL.y} stroke={C.grey} strokeWidth={5} strokeLinecap="round" />
+              <rect x={nx(bandLo)} y={NL.y - 22} width={(nx(bandHi) - nx(bandLo)) * lineT} height={44} rx={10} fill={C.teal} />
+              <text x={(nx(bandLo) + nx(bandHi)) / 2 + 30} y={NL.y - 38} textAnchor="middle" fontSize={TYPE.label} fontWeight={700} fill={C.teal} opacity={prog(f, b[5] + 10, 8)}>
                 {N.load_band} published
               </text>
-              {/* the model */}
-              <g opacity={prog(u, 500, 12)}>
-                <circle cx={nx(model)} cy={120} r={20} fill={C.red} />
-                <text x={nx(model)} y={66} textAnchor="middle" fontSize={44} fontWeight={700} fill={C.red}>
+              <g opacity={prog(f, b[5] + 4, 8)}>
+                <circle cx={nx(model)} cy={NL.y} r={18} fill={C.red} />
+                <text x={nx(model)} y={NL.y - 34} textAnchor="middle" fontSize={TYPE.body} fontWeight={800} fill={C.red}>
                   {N.load_factor_model}
                 </text>
-                <text x={nx(model)} y={186} textAnchor="middle" fontSize={34} fontWeight={700} fill={C.red}>
+                <text x={nx(model)} y={NL.y + 58} textAnchor="middle" fontSize={TYPE.label} fontWeight={700} fill={C.red}>
                   model
                 </text>
               </g>
-              {/* all published ridership placed */}
-              <g opacity={prog(u, 526, 12)}>
-                <circle cx={nx(full)} cy={120} r={20} fill={C.amber} />
-                <text x={nx(full)} y={66} textAnchor="middle" fontSize={44} fontWeight={700} fill={C.amber}>
+              <g opacity={prog(f, b[5] + 16, 8)}>
+                <circle cx={nx(fullAlloc)} cy={NL.y} r={18} fill={C.amber} />
+                <text x={nx(fullAlloc)} y={NL.y - 34} textAnchor="middle" fontSize={TYPE.body} fontWeight={800} fill={C.amber}>
                   {N.load_full_allocation}
                 </text>
-                <text x={NL_X + NL_W + 20} y={186} textAnchor="end" fontSize={32} fontWeight={700} fill={C.amber}>
+                <text x={NL.x + NL.w} y={NL.y + 58} textAnchor="end" fontSize={TYPE.label} fontWeight={700} fill={C.amber}>
                   all published ridership placed
                 </text>
               </g>
-              {/* bracket */}
               {(() => {
-                const t = prog(u, 548, 30, inOutCubic);
+                const t = prog(f, b[5] + 24, 18, inOutCubic);
                 const a = nx(model);
-                const b = a + (nx(full) - a) * t;
-                return (
-                  <g opacity={t > 0 ? 1 : 0}>
-                    <path d={`M${a} 212 V224 H${b} V212`} fill="none" stroke={C.ink} strokeWidth={4} />
-                    <text x={(a + nx(full)) / 2} y={254} textAnchor="middle" fontSize={32} fill={C.ink} opacity={t > 0.9 ? 1 : 0} fontWeight={700}>
+                const e = a + (nx(fullAlloc) - a) * t;
+                return t > 0 ? (
+                  <g>
+                    <path d={`M${a} 160 V172 H${e} V160`} fill="none" stroke={C.ink} strokeWidth={3} />
+                    <text x={(a + nx(fullAlloc)) / 2} y={210} textAnchor="middle" fontSize={TYPE.label} fill={C.ink} fontWeight={600} opacity={t > 0.9 ? 1 : 0}>
                       the truth is somewhere between
                     </text>
                   </g>
-                );
+                ) : null;
               })()}
             </svg>
           </div>
 
-          {/* the corridor row */}
-          <div style={{ position: "absolute", left: 0, top: 470, width: "100%", opacity: phaseC }}>
-            <div style={{ position: "relative", height: 72 }}>
-              <Row u={u} y={0} h={72} appear={640} fillAt={652} text={`${N.corridor_hits_total} of ${N.corridors_total} corridors`} />
-              {/* strike line */}
-              <div style={{ position: "absolute", left: 70, top: 35, height: 6, borderRadius: 3, background: C.ink, width: 292 * prog(u, 690, 12, outCubic) }} />
-              <div style={{ position: "absolute", right: 30, top: 0, height: 72, display: "flex", alignItems: "center", fontSize: 34, fontWeight: 700, color: C.red, opacity: prog(u, 700, 12, outCubic) }}>chance alone gives {N.corridor_chance} of {N.corridors_total}</div>
-            </div>
-            <div style={{ marginTop: 26, display: "flex", flexDirection: "column", gap: 18 }}>
-              <div style={{ opacity: prog(u, 724, 12, outCubic), transform: `translateX(${(1 - prog(u, 724, 12, outCubic)) * 40}px)`, fontSize: 38, fontWeight: 700, color: C.ink, padding: "14px 24px", background: C.tealBg, borderRadius: 18, borderLeft: `10px solid ${C.teal}` }}>
-                {N.corridor_top_decile_pct}% of corridor stretches in the top decile, chance {N.corridor_top_decile_chance_pct}%
-              </div>
-              <div style={{ opacity: prog(u, 756, 12, outCubic), transform: `translateX(${(1 - prog(u, 756, 12, outCubic)) * 40}px)`, fontSize: 38, fontWeight: 700, color: C.ink, padding: "14px 24px", background: C.tealBg, borderRadius: 18, borderLeft: `10px solid ${C.teal}` }}>
-                {N.corridor_both_ends} of {N.corridors_total} with both ends on the corridor
+          {/* the corridor row, struck through */}
+          <div style={{ position: "absolute", left: 0, top: missTop - 64 + 116, width: INNER, opacity: corOn }}>
+            <div style={{ position: "relative", height: 66 }}>
+              <Row text={corText} appear={b[6] - 4} fill={b[6] + 4} y={0} h={66} size={TYPE.caption} />
+              <div style={{ position: "absolute", left: 24 + 66 * 0.62 + 18 - 6, top: 31, height: 5, borderRadius: 3, background: C.ink, width: (corTextW + 12) * strike }} />
+              <div style={{ position: "absolute", right: 28, top: 0, height: 66, display: "flex", alignItems: "center", fontSize: TYPE.label, fontWeight: 800, color: C.red, opacity: prog(f, b[7] + 6, 10, outCubic) }}>
+                chance alone gives {N.corridor_chance} of {N.corridors_total}
               </div>
             </div>
+            {[
+              { text: `${N.corridor_top_decile_pct}% of corridor stretches in the top decile, chance ${N.corridor_top_decile_chance_pct}%`, at: b[7] + 16 },
+              { text: `${N.corridor_both_ends} of ${N.corridors_total} with both ends on the corridor`, at: b[7] + 26 },
+            ].map((l, i) => {
+              const t = springSoft(f, fps, l.at, 16);
+              return (
+                <div key={i} style={{ marginTop: 14, padding: "8px 22px", borderLeft: `8px solid ${C.teal}`, borderRadius: RADIUS.sm, background: C.tealBg, opacity: t, transform: `translateX(${(1 - t) * 30}px)` }}>
+                  <FitText text={l.text} size={TYPE.label} width={INNER - 60} weight={600} color={C.ink} />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      <div style={{ position: "absolute", left: 0, right: 0, top: 400, textAlign: "center", fontSize: 84, fontWeight: 700, color: C.paper, opacity: closing, transform: `translateY(${(1 - closing) * 20}px)`, textShadow: "0 4px 30px rgba(0,0,0,0.6)" }}>No field count was possible.</div>
-      <Caption spans={spans} bottom={30} />
-      <Sfx name="pop" at={448} volume={0.5} />
-    </Scene>
+      <div style={{ position: "absolute", left: 96, top: 440, width: W - 192, opacity: closing }}>
+        <Kinetic text="No field count was possible." at={b[8] - 2} size={TYPE.h1} width={W - 192} maxLines={1} stagger={4} align="center" />
+      </div>
+
+      <Captions />
+      <Sfx name="tap" at={b[0] + 30} volume={0.35} />
+      {hits.map((h, i) => (
+        <Sfx key={i} name="tap" at={h.fill} volume={0.32} />
+      ))}
+      <Sfx name="pop" at={beat(4, 0.45)} volume={0.4} />
+      <Sfx name="tap" at={b[6] + 4} volume={0.3} />
+      <Sfx name="swoop" at={b[7]} volume={0.2} len={30} />
+    </SceneShell>
   );
 };

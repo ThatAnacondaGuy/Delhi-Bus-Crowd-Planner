@@ -3,7 +3,7 @@
 #   video/public/vo/scene-01.m4a ... scene-09.m4a   (also .wav .mp3 .aac .aiff .caf)
 # For each file present: high-pass 80 Hz, denoise (afftdn), trim leading and trailing silence, put back a 0.3 s lead,
 # loudness-normalise to -16 LUFS (two-pass loudnorm) and write video/public/vo/clean/scene-NN.wav (48 kHz, stereo).
-# Scene 05 is one file with five parts separated by silences: the part starts are written to
+# Scene 05 is one file with five parts separated by pauses: the part starts are written to
 # public/vo/clean/scene-05.parts.json so the five phone shots follow the voice.
 # Missing files are skipped. Re-run after dropping in new takes.
 set -euo pipefail
@@ -44,24 +44,48 @@ for n in 01 02 03 04 05 06 07 08 09; do
   printf 'scene-%s  %6.2f s  %s LUFS  (%s)\n' "$n" "$dur" "$lufs" "$src"
 
   if [ "$n" = "05" ]; then
-    # five parts separated by silences of about a second and a half: find where each part starts
+    # five parts separated by pauses: find where each part starts. With exactly four pauses of 0.9 s or more they are the part
+    # breaks. With more (the voice also pauses inside a part: the script has "//" long pauses), pick the four that make each
+    # part's speaking time closest to its share of the script's words (5a to 5e: 20, 15, 19, 21, 21 words).
     PARTS_PY=$(cat <<'PY'
-import re, sys, json, os
+import re, sys, json, os, itertools
 text = sys.stdin.read()
-ends = [float(x) for x in re.findall(r"silence_end: ([0-9.]+)", text)]
-starts = [0.3] + ends
-if len(starts) == 5:
-    json.dump([round(s, 2) for s in starts], open(sys.argv[1], "w"))
-    print("  scene 5 parts start at", [round(s, 2) for s in starts], "seconds")
-else:
-    print(f"  scene 5: found {len(starts)} parts, expected 5 (pauses of about 1.5 s between 5a..5e); using the script split")
+sil = [(float(a), float(b)) for a, b in re.findall(r"silence_start: ([0-9.]+)\s*\n.*?silence_end: ([0-9.]+)", text)]
+WORDS = [20, 15, 19, 21, 21]
+total_end = float(sys.argv[2])
+def fail(msg):
+    print("  scene 5: " + msg + "; using the script split")
     try:
         os.remove(sys.argv[1])
     except OSError:
         pass
+if len(sil) < 4:
+    fail(f"found {len(sil)} pauses of 0.9 s or more, expected 4 (about 1.5 s between 5a..5e)")
+    sys.exit(0)
+def starts_for(choice):
+    return [0.3] + [sil[i][1] for i in choice]
+def speech_between(a, b):
+    # speaking time in [a, b] = length minus the pauses inside it
+    t = b - a
+    for s0, s1 in sil:
+        t -= max(0.0, min(b, s1) - max(a, s0))
+    return t
+best = None
+for choice in itertools.combinations(range(len(sil)), 4):
+    st = starts_for(choice)
+    ends = [sil[i][0] for i in choice] + [total_end]
+    times = [speech_between(a, b) for a, b in zip(st, ends)]
+    rate = sum(times) / sum(WORDS)
+    err = sum(abs(t - w * rate) for t, w in zip(times, WORDS))
+    if best is None or err < best[0]:
+        best = (err, choice, st)
+how = "the four pauses" if len(sil) == 4 else f"the best fit of the script's word counts among {len(sil)} pauses"
+json.dump([round(x, 2) for x in best[2]], open(sys.argv[1], "w"))
+print("  scene 5 parts start at", [round(x, 2) for x in best[2]], "seconds (" + how + ")")
+print("  scene 5 pauses of 0.9 s or more (start-end):", [(round(a, 2), round(b, 2)) for a, b in sil])
 PY
 )
-    ffmpeg -hide_banner -nostats -i "$dst" -af "silencedetect=noise=-38dB:d=0.9" -f null - 2>&1 | python3 -c "$PARTS_PY" "$OUT/scene-05.parts.json"
+    ffmpeg -hide_banner -nostats -i "$dst" -af "silencedetect=noise=-38dB:d=0.9" -f null - 2>&1 | python3 -c "$PARTS_PY" "$OUT/scene-05.parts.json" "$dur"
   fi
 done
 

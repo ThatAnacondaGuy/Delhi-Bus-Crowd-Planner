@@ -14,13 +14,17 @@
     "test": "node --test tests/*.test.mjs",
     "near-final": "bash scripts/render.sh out/near-final.mp4",
     "captions": "node --no-warnings scripts/captions_srt.mjs",
-    "master": "bash scripts/master.sh"
+    "master": "bash scripts/master.sh",
+    "sync-table": "node --no-warnings scripts/sync_table.mjs",
+    "stills": "node --no-warnings scripts/stills.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.546",
     "@remotion/google-fonts": "4.0.546",
+    "@remotion/layout-utils": "4.0.546",
     "@remotion/media-utils": "4.0.546",
     "@remotion/paths": "4.0.546",
+    "@remotion/transitions": "4.0.546",
     "qrcode": "1.5.4",
     "react": "19.2.0",
     "react-dom": "19.2.0",
