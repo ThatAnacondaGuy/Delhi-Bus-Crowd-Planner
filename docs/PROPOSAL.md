@@ -5,7 +5,7 @@
 
 <p class="tag">See how crowded each stretch of your Delhi bus trip usually is, before you board.</p>
 
-<p class="meta">Transport Stack Hackathon 2026 · Phase 1 · Problem 2: a crowdedness-aware journey planner · Aniket Ingale and Ashish Maurya (Ash), Pune</p>
+<p class="meta">Transport Stack Hackathon 2026 · Phase 1 · Problem 2: a crowdedness-aware journey planner · Team Kshama: Aniket Ingale and Ashish Maurya (Ash), Pune</p>
 
 </div>
 
@@ -88,8 +88,8 @@ An on-bus count on a few corridors to replace our one unverifiable step, the sca
 |---|---|
 | **Live demo** | <https://huggingface.co/spaces/ThatAnacondaGuy/delhi-bus-crowd-planner> (precomputed answers for well-known places and times; the full planner runs locally) |
 | **Code, README, technical note** | <https://github.com/ThatAnacondaGuy/Delhi-Bus-Crowd-Planner> |
-| **Team** | Aniket Ingale and Ashish Maurya (Ash) |
+| **Team** | Team Kshama: Aniket Ingale and Ashish Maurya (Ash) |
 
 </div>
 
-<p class="credit">Data: Transport Stack / IIIT Delhi; ticketing from ONDC e-ticketing. Aggregates only: no ticket-level or vehicle-level data is published. Figures rendered from run 20261123-1952-f9fb356b, code 7ad173f, 2026-11-23.</p>
+<p class="credit">Data: Transport Stack / IIIT Delhi; ticketing from ONDC e-ticketing. Aggregates only: no ticket-level or vehicle-level data is published. Figures rendered from run 20261124-1340-fc8a433f, code b52923d, 2026-11-24.</p>

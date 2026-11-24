@@ -186,7 +186,7 @@ data/gps_aggregates/  the committed GPS aggregate (trips that ran, by route and 
 tests/           unit, golden-journey and documentation tests
 ```
 
-<sub>README, technical note and proposal are rendered from `*.tmpl.md` templates by the last pipeline stage, so every number in them comes from the run that produced the tables (run `20261123-1952-f9fb356b`, code `7ad173f`, finished 2026-11-23 19:52 IST).</sub>
+<sub>README, technical note and proposal are rendered from `*.tmpl.md` templates by the last pipeline stage, so every number in them comes from the run that produced the tables (run `20261124-1340-fc8a433f`, code `b52923d`, finished 2026-11-24 13:40 IST).</sub>
 
 ## Data and credit
 
@@ -207,6 +207,6 @@ The aim is the same product with the evidence getting stronger: more months of t
 
 ## Team
 
-**Aniket Ingale** and **Ashish Maurya (Ash)**, Pune. Transport Stack Hackathon 2026, Problem 2: a crowdedness-aware journey planner for Delhi buses.
+**Team Kshama**: **Aniket Ingale** and **Ashish Maurya (Ash)**, Pune. Transport Stack Hackathon 2026, Problem 2: a crowdedness-aware journey planner for Delhi buses.
 
 <sub>MIT licence. Built with Python, DuckDB, pandas, FastAPI and plain JavaScript.</sub>
