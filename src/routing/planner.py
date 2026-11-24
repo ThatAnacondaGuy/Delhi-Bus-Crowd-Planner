@@ -787,9 +787,11 @@ class Planner:
         query = {"from": {"id": o.id, "name": o.name}, "to": {"id": d.id, "name": d.name},
                  "depart": _hhmm(dep), "day": day}
         res = {"data_version": self.version, "query": query, "options": [], "notes": notes}
+        if o.id == d.id:
+            raise ValueError("Pick two different places.")
         gap = min(self._pair_m(o.stops, d.stops), WALK_ONLY_M + 1) if o.stops and d.stops else INF
-        if o.id == d.id or set(o.stops) & set(d.stops) or gap <= WALK_ONLY_M:
-            res["options"] = [self._walk_option(dep, 0.0 if o.id == d.id else gap)]
+        if set(o.stops) & set(d.stops) or gap <= WALK_ONLY_M:
+            res["options"] = [self._walk_option(dep, gap)]
             notes.append("These places are within walking distance; no bus needed.")
             return res
         org, dst = self._access(o), self._access(d)
@@ -881,6 +883,9 @@ class Planner:
             t = self._run(fastest["spec"], dep + off, day)
             if t is None or t["no_data_share"] > NO_DATA_CUTOFF:
                 continue
+            fast_min = fastest["arrive"] - dep
+            if t["arrive"] - t["dep"] > fast_min + max(10.0, 0.25 * fast_min):
+                continue                     # waiting for a rare bus can make it hours slower; not a useful offer
             lo, mid, hi = (headline_of(t["segs"], f)["level"] for f in ("lvl_lo", "lvl", "lvl_hi"))
             if lo == mid == hi and _rank(mid) >= 0 and _rank(mid) < RANK[base]:
                 return t

@@ -200,6 +200,27 @@ def test_leave_later_offered_when_whole_range_is_seats(make):
     assert later["tradeoff"].endswith(later["arrive"])
 
 
+def test_leave_later_not_offered_when_it_takes_far_longer_than_fastest(make, monkeypatch):
+    p = make(later_rows(510, 8, 8, 8))
+    real = Planner._run
+
+    def slow_later(self, legs, dep, day):
+        t = real(self, legs, dep, day)
+        if t is not None and dep > 480.0:           # a later departure that waits hours for a rare bus
+            t = dict(t, arrive=t["arrive"] + 150.0)
+        return t
+
+    monkeypatch.setattr(Planner, "_run", slow_later)
+    res = p.plan("Alpha Terminal", "Echo Depot", "08:00", "weekday")
+    assert by_role(res, "leave_later") is None
+
+
+def test_same_place_is_rejected(make):
+    p = make(later_rows(510, 8, 8, 8))
+    with pytest.raises(ValueError, match="Pick two different places"):
+        p.plan("Alpha Terminal", "Alpha Terminal", "08:00", "weekday")
+
+
 def test_leave_later_not_offered_when_range_spans_two_levels(make):
     p = make(later_rows(510, 20, 25, 30))
     res = p.plan("Alpha Terminal", "Echo Depot", "08:00", "weekday")
@@ -232,7 +253,7 @@ def test_night_departure_is_flagged_never_empty(make):
 
 def test_walk_only_trip(make):
     p = make(STANDING_101)
-    res = p.plan("Charlie Chowk", "Charlie Chowk Opp", "08:00", "weekday")
+    res = p.plan("Charlie Chowk", "stop:7", "08:00", "weekday")   # a place and one of its own stops
     assert len(res["options"]) == 1
     assert all(l["mode"] == "walk" for l in res["options"][0]["legs"])
     assert res["options"][0]["changes"] == 0 and res["options"][0]["fare_inr"] == 0
