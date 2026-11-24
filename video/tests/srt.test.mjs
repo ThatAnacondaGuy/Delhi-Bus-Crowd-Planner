@@ -8,7 +8,7 @@ const parse = (srt) =>
     const [n, t, ...text] = b.split("\n");
     const m = t.match(/(\d+):(\d+):(\d+),(\d+) --> (\d+):(\d+):(\d+),(\d+)/);
     const ms = (h, mi, s, x) => ((+h * 60 + +mi) * 60 + +s) * 1000 + +x;
-    return { n: +n, from: ms(...m.slice(1, 5)), to: ms(...m.slice(5, 9)), text: text.join("\n") };
+    return { n: +n, from: ms(...m.slice(1, 5)), to: ms(...m.slice(5, 9)), text: text.join(" "), lines: text };
   });
 const ALL = [...SCENE_CUES.slice(0, 4).flat(), ...PLANNER_PARTS.flat(), ...SCENE_CUES.slice(5).flat()];
 
@@ -33,4 +33,13 @@ test("with voice the cues start on the detected speech", () => {
   const c2 = cues.find((c) => c.text === SCENE_CUES[0][1]);
   assert.ok(Math.abs(c2.from - (2200 + 5357)) <= 34, `cue at ${c2.from} ms`);
   assert.ok(cues.find((c) => c.text === "No field count was possible."));
+});
+
+test("no SRT line is longer than 42 characters (cues over 42 are broken into two lines)", () => {
+  const cues = parse(buildSrt(Array(9).fill(null)));
+  for (const c of cues) {
+    assert.ok(c.lines.length <= 2, c.text);
+    for (const l of c.lines) assert.ok(l.length <= 42, `"${l}" is ${l.length} characters`);
+  }
+  assert.ok(cues.some((c) => c.lines.length === 2));
 });

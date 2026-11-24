@@ -35,28 +35,13 @@ while IFS= read -r -d '' f; do
 done < <(find "$SRC" -type f -ipath '*sound effects*' \( -iname '*.mp3' -o -iname '*.wav' -o -iname '*.m4a' \) -print0)
 echo "sound effects copied: $m"
 
-# Music: every file with "music" or "background" in its name, played in this order: names starting with "startup" first,
-# then the rest alphabetically. They become public/music-1.ext, music-2.ext ... and the film crossfades from one to the next
-# (4 s, equal power) at the scene boundary closest to 1:55. Old public/music* copies are replaced.
+# Music (R38): only the "ambient corporate startup promo background" track is used, looped to the film length with 3 s
+# equal-power crossfades at scene cuts (scripts/loop_music.sh). The first track ("startup background") is not used.
 rm -f public/music.* public/music-*.*
-tracks=()
-while IFS= read -r -d '' f; do tracks+=("$f"); done < <(find "$SRC" -type f \( -iname '*music*' -o -iname '*background*' \) \( -iname '*.mp3' -o -iname '*.wav' -o -iname '*.m4a' \) -print0)
-if [ "${#tracks[@]}" -eq 0 ]; then
+track=$(find "$SRC" -type f -iname '*ambient corporate*' \( -iname '*.mp3' -o -iname '*.wav' -o -iname '*.m4a' \) -print -quit)
+if [ -z "$track" ]; then
   echo "no music file found"
 else
-  lines=""
-  for f in "${tracks[@]}"; do
-    b=$(basename "$f" | tr '[:upper:]' '[:lower:]')
-    k=1
-    if [[ "$b" == startup* ]]; then k=0; fi
-    lines+="$k"$'\t'"$b"$'\t'"$f"$'\n'
-  done
-  ordered=$(printf '%s' "$lines" | sort -t $'\t' -k1,1 -k2,2 | cut -f3)
-  n=0
-  while IFS= read -r f; do
-    [ -z "$f" ] && continue
-    n=$((n + 1)); ext="${f##*.}"
-    cp -p "$f" "public/music-$n.$ext"
-    echo "music $n: $f -> public/music-$n.$ext"
-  done <<< "$ordered"
+  bash "$(dirname "$0")/loop_music.sh" "$track" public/music-1.mp3 >/dev/null
+  echo "music: $track -> public/music-1.mp3 (looped)"
 fi

@@ -11,14 +11,14 @@ export const Scene02: React.FC = () => {
   const f = useCurrentFrame();
   const { fps, durationInFrames: D } = useVideoConfig();
   const { beat } = useBeats();
-  const titleAt = beat(0) - 4;
+  const titleAt = 0; // the title starts on the first frame, a few frames before the first word
   const tagAt = beat(1);
   const chipsAt = beat(2);
   const lift = springSoft(f, fps, tagAt - 6, 26);
   return (
     <SceneShell>
       <Backdrop tint={[C.blue, C.teal, "#3b2a5c"]} />
-      <StylisedMap draw={prog(f, 0, D * 0.9)} glow={prog(f, tagAt, 40)} opacity={0.55} />
+      <StylisedMap draw={prog(f, 0, D * 0.9)} glow={prog(f, tagAt, 40)} opacity={0.55} clear={[280, 560]} />
       <div style={{ position: "absolute", left: CONTENT.left, top: 300 - lift * 70, width: CONTENT.width }}>
         <Kinetic text="Delhi Bus Crowding Planner" at={titleAt} size={TYPE.display} width={CONTENT.width} maxLines={1} stagger={5} align="center" accent={{ crowding: C.tealGlow }} />
       </div>

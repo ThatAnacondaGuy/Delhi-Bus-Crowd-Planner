@@ -7,7 +7,7 @@ import { C, CONTENT, RADIUS, SHADOW, TYPE, clamp01, inOutCubic, lerp, prog, spri
 import { Backdrop, Captions, Chapter, Counter, FitText, SceneShell, Sfx, fitLine, useBeats } from "../components/kit";
 
 const BAR = { x: CONTENT.left + 40, y: 280, w: CONTENT.width - 80, h: 84 };
-const NEXT = ["More months of tickets", "An on-bus count", "GPS stop times", "Live arrivals"];
+const NEXT: [string, string][] = [["More months", "of tickets"], ["An on-bus", "count"], ["GPS stop", "times"], ["Live", "arrivals"]];
 
 export const Scene08: React.FC = () => {
   const f = useCurrentFrame();
@@ -66,7 +66,7 @@ export const Scene08: React.FC = () => {
         const t = springPop(f, fps, cardAt[i]);
         return (
           <div
-            key={s}
+            key={s[0]}
             style={{
               position: "absolute",
               left: CONTENT.left + i * (cardW + 24),
@@ -85,7 +85,10 @@ export const Scene08: React.FC = () => {
               transform: `scale(${0.6 + 0.4 * t})`,
             }}
           >
-            <FitText text={s} size={TYPE.body} width={cardW - 48} maxLines={2} weight={700} color={C.text} lineHeight={1.15} />
+            <div style={{ fontSize: TYPE.body, fontWeight: 700, color: C.text, lineHeight: 1.15, whiteSpace: "nowrap" }}>
+              <div>{s[0]}</div>
+              <div>{s[1]}</div>
+            </div>
           </div>
         );
       })}

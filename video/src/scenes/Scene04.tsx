@@ -55,6 +55,7 @@ export const Scene04: React.FC = () => {
   const chipIn = springSoft(f, fps, b5 - 4, 20);
   const grow = prog(f, D - 26, 26, inOutCubic);
 
+  const textOut = 1 - prog(f, b5 - 4, 10, inOutCubic); // the stage-2 words leave before the chip, so nothing sits behind it
   const label = (text: string, at: number, extraStyle: React.CSSProperties) => {
     const t = springSoft(f, fps, at, 18);
     return (
@@ -131,15 +132,19 @@ export const Scene04: React.FC = () => {
           return <Person key={i} x={BUS.x + BUS.w + 40 + i * 64 - (1 - t) * 40} y={BUS.y + 120 + i * 18} size={74} color={C.redGlow} opacity={t * (1 - prog(f, b3 + 40 + i * 4, 18))} />;
         })}
         <div style={{ position: "absolute", left: BUS.x + BUS.w + 14, top: BUS.y - 6, width: 10, height: BUS.h + 12, borderRadius: 5, background: C.redGlow, opacity: extra, boxShadow: `0 0 20px ${C.redGlow}` }} />
-        {label(`app tickets: about 1 in ${N.one_in} riders`, b2 + 6, { left: BUS.x, top: BUS.y + BUS.h + 22, width: BUS.w, textAlign: "center" })}
+        <div style={{ opacity: textOut }}>
+          {label(`app tickets: about 1 in ${N.one_in} riders`, b2 + 6, { left: BUS.x, top: BUS.y + BUS.h + 22, width: BUS.w, textAlign: "center" })}
+        </div>
 
         {/* seats and rated total */}
         <div style={{ opacity: prog(f, b4 - 4, 12) }}>
           <div style={{ position: "absolute", left: BAR.x, top: BAR.y, width: BAR.w, height: BAR.h, borderRadius: RADIUS.pill, background: "rgba(255,255,255,0.08)" }} />
           <div style={{ position: "absolute", left: BAR.x, top: BAR.y, width: seatsW * prog(f, b4, 18, inOutCubic), height: BAR.h, borderRadius: `${BAR.h / 2}px 0 0 ${BAR.h / 2}px`, background: C.teal }} />
           <div style={{ position: "absolute", left: BAR.x + seatsW, top: BAR.y, width: ratedW * prog(f, b4 + 10, 18, inOutCubic), height: BAR.h, borderRadius: `0 ${BAR.h / 2}px ${BAR.h / 2}px 0`, background: C.amber }} />
-          {label("seats", b4 + 6, { left: BAR.x, top: BAR.y + BAR.h + 16, width: seatsW - 20 })}
-          {label("standing, up to the rated total", b4 + 14, { left: BAR.x + seatsW + 20, top: BAR.y + BAR.h + 16, width: ratedW - 20 })}
+          <div style={{ opacity: textOut }}>
+            {label("seats", b4 + 6, { left: BAR.x, top: BAR.y + BAR.h + 16, width: seatsW - 20 })}
+            {label("standing, up to the rated total", b4 + 14, { left: BAR.x + seatsW + 20, top: BAR.y + BAR.h + 16, width: ratedW - 20 })}
+          </div>
           <div style={{ position: "absolute", left: marker - 4, top: BAR.y - 22, width: 8, height: BAR.h + 44, borderRadius: 4, background: C.text, opacity: prog(f, b4 + 20, 8), boxShadow: "0 0 16px rgba(255,255,255,0.6)" }} />
         </div>
       </div>

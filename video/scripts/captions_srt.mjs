@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { FPS, planScenes, sceneTimeline, captionSpans } from "../src/timing.ts";
 import { toSrt } from "../src/captions.ts";
+import { wrapCaption } from "../src/sync.ts";
 
 /**
  * voSeconds: clean voice length per scene (null when absent); parts: scene 5 part starts (s) or null;
@@ -18,7 +19,7 @@ export function buildSrt(voSeconds, parts = null, silences = Array(9).fill(null)
   const entries = [];
   for (let i = 0; i < 9; i++) {
     const tl = sceneTimeline(i + 1, plan.durations[i], voSeconds[i], silences[i], i === 4 ? parts : null);
-    for (const s of captionSpans(tl.cues, tl.duration)) entries.push({ text: s.text, from: plan.starts[i] + s.from, to: plan.starts[i] + s.to });
+    for (const s of captionSpans(tl.cues, tl.duration)) entries.push({ text: wrapCaption(s.text, 42).join("\n"), from: plan.starts[i] + s.from, to: plan.starts[i] + s.to });
   }
   return toSrt(entries, FPS);
 }

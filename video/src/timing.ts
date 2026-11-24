@@ -137,11 +137,11 @@ export function speechWindows(starts: number[], voSeconds: (number | null)[]): W
 
 export const MUSIC_BASE = 0.9; // full level in the gaps (tracks are first trimmed to a common loudness)
 export const MUSIC_TARGET_LUFS = -18;
-export const DUCK_DB = -18;
+export const DUCK_DB = -20;
 const DUCK = Math.pow(10, DUCK_DB / 20);
 export const RAMP = 12;
 
-/** Music volume at a frame: ducked about 18 dB while speech plays, back to full over 12 frames, fade in 1.5 s, out 2.5 s. */
+/** Music volume at a frame: ducked about 20 dB while speech plays, back to full over 12 frames, fade in 1.5 s, out 2.5 s. */
 export function musicGain(frame: number, windows: Window[], total: number): number {
   let duck = 0;
   for (const [a, b, depth = 1] of windows) {

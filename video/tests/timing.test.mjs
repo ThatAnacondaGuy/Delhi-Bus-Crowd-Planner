@@ -76,12 +76,12 @@ test("caption spans: start on the first word, never overlap, bridge short pauses
   assert.equal(bridged[0].to, 46);
 });
 
-test("music is ducked about 18 dB under speech, full in gaps, faded in 1.5 s and out 2.5 s", () => {
+test("music is ducked about 20 dB under speech, full in gaps, faded in 1.5 s and out 2.5 s", () => {
   const total = 5400;
   const win = [[120, 300]];
   const full = musicGain(2000, win, total);
   const ducked = musicGain(200, win, total);
-  assert.ok(Math.abs(20 * Math.log10(ducked / full) + 18) < 0.5);
+  assert.ok(Math.abs(20 * Math.log10(ducked / full) + 20) < 0.5);
   assert.equal(musicGain(0, win, total), 0);
   assert.ok(musicGain(total - 1, [], total) < 0.02);
   const before = musicGain(115, win, total);

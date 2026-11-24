@@ -42,7 +42,8 @@ export const Scene06: React.FC = () => {
   const row1 = rects.row1;
 
   const top: Cam = { wx: SX, wy: SY, z: 1 };
-  const tableCam: Cam = { wx: 14 + SX / 1.4 + 30, wy: cy(row1) + (SY - 330) / 1.4, z: 1.4 };
+  // the table fills the screen edge to edge (page x 4..964) so the map panel on its right is never cut in half
+const tableCam: Cam = { wx: 484, wy: cy(row1) + (SY - 330) / 1.5, z: 1.5 };
   const mapCam: Cam = { wx: cx(mapCard) - 40, wy: cy(mapCard), z: 1.3 };
   const cam = camAt(f, ordered([[0, top], [b1 - 6, top], [b1 + 30, tableCam], [b4 - 8, tableCam], [b4 + 26, mapCam]]));
 

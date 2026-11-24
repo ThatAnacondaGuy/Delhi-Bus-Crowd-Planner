@@ -196,7 +196,7 @@ export const Grain: React.FC<{ opacity?: number }> = ({ opacity = 0.07 }) => {
 export const Chapter: React.FC<{ n: string; text: string; hold?: number; x?: number }> = ({ n, text, hold = 110, x = SAFE.x }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const t = springSoft(f, fps, 4, 18);
+  const t = springSoft(f, fps, 0, 12);
   const o = t * (1 - prog(f, hold, 14, inOutCubic));
   if (o <= 0) return null;
   return (
@@ -565,7 +565,8 @@ const ROADS: string[] = (() => {
 export const CORRIDOR = "M 180 900 C 520 760, 700 640, 960 560 S 1460 380, 1760 200";
 export const ROUTE_B = "M 240 220 C 560 330, 820 420, 960 560 S 1300 860, 1700 940";
 
-export const StylisedMap: React.FC<{ draw: number; glow: number; opacity?: number; pulseAt?: number }> = ({ draw, glow, opacity = 1, pulseAt = 0 }) => {
+/** clear: a horizontal band (y from..to, px) where the route lines fade out so text above the map stays legible. */
+export const StylisedMap: React.FC<{ draw: number; glow: number; opacity?: number; pulseAt?: number; clear?: [number, number] }> = ({ draw, glow, opacity = 1, pulseAt = 0, clear }) => {
   const f = useCurrentFrame();
   const dash = (f - pulseAt) * 4;
   return (
@@ -574,14 +575,27 @@ export const StylisedMap: React.FC<{ draw: number; glow: number; opacity?: numbe
         <filter id="cglow" x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur stdDeviation="12" />
         </filter>
+        {clear ? (
+          <mask id="routeclear" maskUnits="userSpaceOnUse" x="0" y="0" width={W} height={H}>
+            <linearGradient id="routeclearg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={H}>
+              <stop offset={Math.max(0, (clear[0] - 60) / H)} stopColor="#fff" />
+              <stop offset={clear[0] / H} stopColor="#000" />
+              <stop offset={clear[1] / H} stopColor="#000" />
+              <stop offset={Math.min(1, (clear[1] + 60) / H)} stopColor="#fff" />
+            </linearGradient>
+            <rect x="0" y="0" width={W} height={H} fill="url(#routeclearg)" />
+          </mask>
+        ) : null}
       </defs>
       {ROADS.map((d, i) => (
         <path key={i} d={d} fill="none" stroke="rgba(148,163,184,0.16)" strokeWidth={i === ROADS.length - 1 ? 5 : 2.5} pathLength={1} strokeDasharray={1} strokeDashoffset={1 - clamp01(draw * 1.4 - i * 0.012)} />
       ))}
+      <g mask={clear ? "url(#routeclear)" : undefined}>
       <path d={ROUTE_B} fill="none" stroke={C.blueGlow} strokeOpacity={0.5} strokeWidth={5} pathLength={1} strokeDasharray={1} strokeDashoffset={1 - clamp01(draw * 1.2 - 0.2)} strokeLinecap="round" />
       <path d={CORRIDOR} fill="none" stroke={C.amberGlow} strokeWidth={26} opacity={0.55 * glow} filter="url(#cglow)" />
       <path d={CORRIDOR} fill="none" stroke={C.amberGlow} strokeWidth={8} pathLength={1} strokeDasharray={1} strokeDashoffset={1 - clamp01(draw * 1.2 - 0.1)} strokeLinecap="round" />
       <path d={CORRIDOR} fill="none" stroke="#fff7e6" strokeWidth={3} strokeDasharray="14 26" strokeDashoffset={-dash} opacity={0.75 * glow} strokeLinecap="round" />
+      </g>
     </svg>
   );
 };

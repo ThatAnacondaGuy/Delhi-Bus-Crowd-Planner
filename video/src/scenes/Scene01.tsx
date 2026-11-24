@@ -155,7 +155,7 @@ export const Scene01: React.FC = () => {
         <div style={{ position: "absolute", left: 0, right: 0, top: 720, bottom: 0, background: "linear-gradient(#0a0e18,#05070c)" }} />
         <Traffic />
         <div style={{ position: "absolute", left: 0, right: 0, top: 860, height: 6, background: "repeating-linear-gradient(90deg, rgba(255,255,255,0.3) 0 80px, transparent 80px 160px)" }} />
-        <div style={{ opacity: dim }}>
+        <div style={{ filter: `brightness(${dim})` }}>
           <Lamp x={110} />
           <Lamp x={1820} />
           <div style={{ position: "absolute", left: 160, top: 520, width: 560, height: 20, borderRadius: 6, background: "#03050a", opacity: queue }} />
