@@ -11,7 +11,7 @@ Transport Stack Hackathon 2026 · Phase 1 · Problem 2 · Aniket Ingale and Ashi
 
 </div>
 
-**Status:** plan for confirmation. You record the voice; we build the film tomorrow in Remotion (React motion graphics rendered to MP4 with headless Chrome) and finish the sound with ffmpeg. Runtime 3:00 is a target; section 10 asks you to confirm it.
+**Status:** this is the plan the demo film was built from (Remotion motion graphics, 3:00 at 30 fps).
 
 | At a glance | |
 |---|---|

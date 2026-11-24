@@ -11,7 +11,7 @@
 
 ## The problem
 
-Delhi riders choose buses by travel time alone, because no journey planner knows how full a bus will be. The fastest bus may be the one that is usually packed at 18:00, and leaving a few minutes later may mean a seat. Nobody counts people on Delhi buses stretch by stretch, so we estimate it from the one dataset that is recorded: **2,559,899 ONDC app tickets from October 2026**, matched to the official timetable and to GPS, scaled up to everyone on board, and tested against everything we can compare it with. The brief says a simple planner with a sound crowding model beats a polished planner with a weak one. We built the model and its evidence first, then a clear screen.
+Delhi riders choose buses by travel time alone, because no journey planner knows how full a bus will be. The fastest bus may be the one that is usually packed at 18:00, and leaving a few minutes later may mean a less crowded bus. Nobody counts people on Delhi buses stretch by stretch, so we estimate it from the one dataset that is recorded: **2,559,899 ONDC app tickets from October 2026**, matched to the official timetable and to GPS, scaled up to everyone on board, and tested against everything we can compare it with. The brief says a simple planner with a sound crowding model beats a polished planner with a weak one. We built the model and its evidence first, then a clear screen.
 
 ## What we built
 
