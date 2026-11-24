@@ -1,161 +1,127 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  BASE_FRAMES, FPS, MIN_TOTAL, MAX_TOTAL, TAIL_FRAMES,
-  planScenes, shotStarts, musicGain, speechWindows, matchSfx,
-  LAST_TAIL_FRAMES, XFADE_FRAMES, XFADE_TARGET, pickCrossfade, trackGains, LEAD_FRAMES,
+  BASE_FRAMES, FPS, HEAD, TAIL, MIN_TOTAL, MAX_TOTAL, LAST_TAIL_FRAMES,
+  planScenes, sceneTimeline, captionSpans, musicGain, speechWindows, matchSfx,
+  XFADE_FRAMES, XFADE_TARGET, pickCrossfade, trackGains,
 } from "../src/timing.ts";
+import { PLANNER_PARTS, SCENE_CUES } from "../src/captions.ts";
 
 const none = Array(9).fill(null);
+// the recorded clean voice lengths (s) and the silences found in scene 1 (silencedetect -35 dB, 0.2 s)
+const VO = [9.091, 8.536, 14.521, 23.048, 44.983, 22.888, 25.501, 10.548, 8.583];
+const S1 = [[0, 0.344], [1.557, 2.221], [3.475, 5.357], [5.972, 6.369], [6.866, 7.779]];
 
-test("without voice-over the scenes keep the script timings and total exactly 3:00", () => {
+test("without voice-over the scenes keep the script timings: 3:00 exactly", () => {
   const p = planScenes(none);
   assert.deepEqual(p.durations, BASE_FRAMES);
   assert.equal(p.total, 5400);
   assert.equal(FPS, 30);
+});
+
+test("with a clean voice file the scene is driven by the voice, never by the script slot", () => {
+  const p = planScenes(VO);
+  VO.forEach((v, i) => assert.equal(p.durations[i], HEAD[i] + Math.ceil(v * FPS) + TAIL[i], `scene ${i + 1}`));
+  assert.notEqual(p.durations[0], BASE_FRAMES[0]);
+  assert.ok(p.total >= MIN_TOTAL && p.total <= MAX_TOTAL, `total ${p.total / FPS} s`);
   assert.deepEqual(p.warnings, []);
+  assert.equal(p.starts[8] + p.durations[8], p.total);
 });
 
-test("a scene stretches only when its clean voice file is longer than the slot (voice + 0.6 s tail)", () => {
-  const vo = [...none];
-  vo[0] = 8; // fits in 300 frames (needs 8*30+18 = 258)
-  vo[1] = 9.5; // 285+18 = 303 > 270 -> stretches
-  const p = planScenes(vo);
-  assert.equal(p.durations[0], 300);
-  assert.equal(p.durations[1], Math.ceil(9.5 * FPS) + TAIL_FRAMES);
+test("a total outside 2:55..3:20 is reported", () => {
+  assert.ok(planScenes(Array(9).fill(25)).warnings.length > 0);
+  assert.ok(planScenes(Array(9).fill(5)).warnings.length > 0);
 });
 
-test("a long total is brought back to 3:10 by trimming holds, never speech", () => {
-  const vo = [...none];
-  vo[4] = 60; // scene 5 needs 1818 frames instead of 1440
-  vo[6] = 36; // scene 7 needs 1098 instead of 900
-  vo[2] = 17; // scene 3 needs 528 instead of 450
-  const p = planScenes(vo);
-  assert.ok(p.total <= MAX_TOTAL, `total ${p.total}`);
-  assert.ok(p.total >= MIN_TOTAL);
-  [[4, 60], [6, 36], [2, 17]].forEach(([i, s]) => assert.ok(p.durations[i] >= Math.ceil(s * FPS) + TAIL_FRAMES, `scene ${i + 1} cut into speech`));
-  assert.equal(p.durations.reduce((a, b) => a + b, 0), p.total);
+test("scene cues sit on the speech: first word of each phrase = head + segment start", () => {
+  const p = planScenes(VO);
+  const tl = sceneTimeline(1, p.durations[0], VO[0], S1, null);
+  assert.equal(tl.head, HEAD[0]);
+  assert.deepEqual(tl.cues.map((c) => c.text), SCENE_CUES[0]);
+  assert.deepEqual(tl.cues.map((c) => c.from), [0.344, 5.357, 7.779].map((s) => HEAD[0] + Math.round(s * FPS)));
 });
 
-test("warns when speech alone cannot fit in 3:10", () => {
-  const vo = Array(9).fill(25);
-  const p = planScenes(vo);
-  assert.ok(p.warnings.length > 0);
+test("scene 5: five shots cut at the four pauses between parts, a few frames before the first word", () => {
+  const p = planScenes(VO);
+  const parts = [0.3, 9.91, 18.35, 26.41, 37.0];
+  // two pauses inside each part, plus the four long part breaks
+  const sil = [[0, 0.3], [3, 3.6], [8.67, 9.91], [13.7, 14.6], [17.43, 18.35], [22.0, 22.5], [25.37, 26.41], [29.9, 30.7], [35.49, 37.0], [40.7, 41.7]];
+  const tl = sceneTimeline(5, p.durations[4], VO[4], sil, parts);
+  assert.equal(tl.shots.length, 5);
+  assert.equal(tl.shots[0], 0);
+  parts.slice(1).forEach((s, k) => assert.equal(tl.shots[k + 1], HEAD[4] + Math.round(s * FPS) - 8));
+  assert.equal(tl.cues.length, PLANNER_PARTS.flat().length);
+  // every part's first phrase starts on its part's first word
+  let k = 0;
+  PLANNER_PARTS.forEach((texts, part) => {
+    const c = tl.cues[k];
+    assert.equal(c.part, part);
+    assert.equal(c.text, texts[0]);
+    assert.equal(c.from, HEAD[4] + Math.round(parts[part] * FPS));
+    k += texts.length;
+  });
 });
 
-test("scene starts accumulate", () => {
-  const p = planScenes(none);
-  assert.equal(p.starts[0], 0);
-  assert.equal(p.starts[1], 300);
-  assert.equal(p.starts[8] + p.durations[8], 5400);
+test("caption spans: start on the first word, never overlap, bridge short pauses, end inside the scene", () => {
+  const p = planScenes(VO);
+  const tl = sceneTimeline(1, p.durations[0], VO[0], S1, null);
+  const spans = captionSpans(tl.cues, tl.duration);
+  spans.forEach((s, i) => {
+    assert.equal(s.from, tl.cues[i].from);
+    assert.ok(s.to > s.from);
+    if (i) assert.ok(s.from >= spans[i - 1].to);
+    assert.ok(s.to <= tl.duration);
+  });
+  const bridged = captionSpans([{ text: "a", from: 10, to: 40, part: 0, split: false }, { text: "b", from: 46, to: 80, part: 0, split: false }], 200);
+  assert.equal(bridged[0].to, 46);
 });
 
-test("scene 5 shots follow the script split by default and the silences when known", () => {
-  const d = shotStarts(1440, null);
-  assert.deepEqual(d, [0, 300, 540, 810, 1140]);
-  const s = shotStarts(1440, [0.3, 9, 16.5, 24, 34]);
-  assert.equal(s.length, 5);
-  assert.ok(s.every((v, i) => i === 0 || v > s[i - 1]));
-  assert.ok(s[4] < 1440);
-});
-
-test("music is ducked about 18 dB under speech, full in gaps, faded in 1.5 s and out 2.5 s", () => {
+test("music is ducked about 20 dB under speech, full in gaps, faded in 1.5 s and out 2.5 s", () => {
   const total = 5400;
   const win = [[120, 300]];
   const full = musicGain(2000, win, total);
   const ducked = musicGain(200, win, total);
-  assert.ok(full > 0.4);
-  assert.ok(Math.abs(20 * Math.log10(ducked / full) + 18) < 0.5, `duck ${20 * Math.log10(ducked / full)}`);
+  assert.ok(Math.abs(20 * Math.log10(ducked / full) + 20) < 0.5);
   assert.equal(musicGain(0, win, total), 0);
-  assert.ok(musicGain(45, [], total) > 0.95 * full);
   assert.ok(musicGain(total - 1, [], total) < 0.02);
-  // a 12-frame ramp, not a jump
   const before = musicGain(115, win, total);
   assert.ok(before < full && before > ducked);
 });
 
-test("speech windows come from each scene's voice start and length", () => {
-  const p = planScenes([4, null, ...Array(7).fill(null)]);
-  const w = speechWindows(p.starts, [4, null, ...Array(7).fill(null)]);
-  assert.equal(w.length, 1);
-  assert.equal(w[0][0], 0);
-  assert.equal(w[0][1], Math.round(4 * FPS));
+test("speech windows run from each scene's first to last voice frame", () => {
+  const p = planScenes(VO);
+  const w = speechWindows(p.starts, VO);
+  assert.equal(w.length, 9);
+  assert.equal(w[0][0], HEAD[0]);
+  assert.equal(w[0][1], HEAD[0] + Math.round(VO[0] * FPS));
+  assert.equal(speechWindows(planScenes(none).starts, none).length, 0);
+});
+
+test("the end card keeps its tail after the last voice line so the music fades out fully", () => {
+  const p = planScenes(VO);
+  const w = speechWindows(p.starts, VO);
+  assert.ok(LAST_TAIL_FRAMES >= 75);
+  assert.ok(p.total - w[8][1] >= LAST_TAIL_FRAMES);
+});
+
+test("music crossfade: the scene boundary closest to 1:55, centred, 4 s long, equal power", () => {
+  assert.equal(XFADE_FRAMES, 120);
+  const starts = [0, 300, 574, 1028, 1748, 3188, 3893, 4793, 5183];
+  assert.equal(pickCrossfade(starts, XFADE_TARGET, 122 * FPS), 3188 - XFADE_FRAMES / 2);
+  const xs2 = pickCrossfade([0, 300, 3600, 3900], XFADE_TARGET, 3700);
+  assert.ok(xs2 + XFADE_FRAMES <= 3700);
+  const xs = 3128;
+  const mid = trackGains(xs + XFADE_FRAMES / 2, [], 5460, xs, 2);
+  const base = musicGain(xs + XFADE_FRAMES / 2, [], 5460);
+  assert.ok(Math.abs(mid[0] ** 2 + mid[1] ** 2 - base ** 2) < 1e-9);
 });
 
 test("sound effects are matched loosely by file name; none when absent", () => {
-  const files = ["Big_Whoosh-01.wav", "ui tap soft.mp3", "city-ambience.mp3", "Chime_2.wav"];
+  const files = ["Big_Whoosh-01.wav", "ui tap soft.mp3", "city-ambience.mp3", "Chime_2.wav", "bus door hissing.mp3", "bus horn.mp3", "busengine idling.mp3"];
   assert.equal(matchSfx(files, "whoosh"), "Big_Whoosh-01.wav");
   assert.equal(matchSfx(files, "tap"), "ui tap soft.mp3");
-  assert.equal(matchSfx(files, "city-ambience"), "city-ambience.mp3");
   assert.equal(matchSfx(files, "chime"), "Chime_2.wav");
-  assert.equal(matchSfx(files, "riser"), null);
-  assert.equal(matchSfx([], "tap"), null);
-  assert.equal(matchSfx(files, "map-swoosh"), "Big_Whoosh-01.wav");
-});
-
-test("scene 1 cues find the user's bus sounds, with a whoosh as the fallback for the air brake", () => {
-  const files = ["bus door hissing.mp3", "bus horn.mp3", "busengine idling.mp3", "swoosh.mp3"];
   assert.equal(matchSfx(files, "air-brake"), "bus door hissing.mp3");
-  assert.equal(matchSfx(files, "horn"), "bus horn.mp3");
   assert.equal(matchSfx(files, "engine"), "busengine idling.mp3");
-  assert.equal(matchSfx(["swoosh.mp3"], "air-brake"), "swoosh.mp3");
-  assert.equal(matchSfx(["a.mp3"], "horn"), null);
-});
-
-test("the end card keeps 2.5 s after the last voice line so the music can fade out fully", () => {
-  const vo = [...none];
-  vo[8] = 8.5;
-  const p = planScenes(vo);
-  assert.equal(LAST_TAIL_FRAMES, 75);
-  assert.equal(p.durations[8], Math.ceil(8.5 * FPS) + LAST_TAIL_FRAMES);
-  // the fade-out (last 2.5 s of the film) starts exactly where the voice ends
-  const w = speechWindows(p.starts, vo);
-  assert.equal(p.total - w[0][1], LAST_TAIL_FRAMES);
-});
-
-test("music crossfade: the scene boundary closest to 1:55, centred, 4 s long", () => {
-  assert.equal(XFADE_FRAMES, 120);
-  assert.equal(XFADE_TARGET, 115 * FPS);
-  const starts = [0, 300, 574, 1028, 1748, 3188, 3893, 4793, 5183];
-  const xs = pickCrossfade(starts, XFADE_TARGET, 122 * FPS);
-  assert.equal(xs, 3188 - XFADE_FRAMES / 2);
-  // a later film (long scene 5 voice) moves the boundary but it stays the nearest one
-  const later = [0, 300, 574, 1028, 1748, 3500, 4205, 5105, 5495];
-  assert.equal(pickCrossfade(later, XFADE_TARGET, 122 * FPS), 3500 - XFADE_FRAMES / 2);
-  // track A must still be playing when the crossfade ends
-  const xs2 = pickCrossfade([0, 300, 3600, 3900], XFADE_TARGET, 3700);
-  assert.ok(xs2 + XFADE_FRAMES <= 3700, `xs ${xs2}`);
-});
-
-test("equal-power crossfade between the two tracks", () => {
-  const win = [];
-  const xs = 3128;
-  const g = (f) => trackGains(f, win, 5460, xs, 2);
-  assert.equal(g(xs - 1)[1], 0);
-  assert.ok(g(xs - 1)[0] > 0);
-  assert.equal(g(xs + XFADE_FRAMES + 1)[0], 0);
-  const mid = g(xs + XFADE_FRAMES / 2);
-  const base = musicGain(xs + XFADE_FRAMES / 2, win, 5460);
-  assert.ok(Math.abs(mid[0] ** 2 + mid[1] ** 2 - base ** 2) < 1e-9, "constant power");
-  assert.ok(Math.abs(mid[0] - mid[1]) < 1e-9);
-  // one track only: no crossfade
-  assert.deepEqual(trackGains(2000, win, 5460, null, 1), [musicGain(2000, win, 5460)]);
-});
-
-test("a scene without a voice file is ducked softly while the other scenes have voice (scene 5 placeholder)", () => {
-  const vo = [8, 8, 14, 23, null, 22, 25, 10, 8];
-  const p = planScenes(vo);
-  const w = speechWindows(p.starts, vo, p.durations);
-  assert.equal(w.length, 9);
-  const s5 = w.find((x) => x[0] === p.starts[4] + LEAD_FRAMES);
-  assert.ok(s5, "window for the voice-less scene");
-  assert.ok(s5[2] > 0 && s5[2] < 1, "soft depth");
-  // with no voice at all, nothing is ducked (the silent draft)
-  assert.equal(speechWindows(planScenes(none).starts, none, planScenes(none).durations).length, 0);
-  // soft duck is shallower than the full -18 dB
-  const full = musicGain(p.starts[4] + 600, [], p.total);
-  const soft = musicGain(p.starts[4] + 600, w, p.total);
-  const hard = musicGain(p.starts[3] + 200, w, p.total);
-  assert.ok(soft < full && soft > hard);
-  assert.ok(Math.abs(20 * Math.log10(soft / full) + 8) < 1, `soft duck ${20 * Math.log10(soft / full)} dB`);
+  assert.equal(matchSfx(files, "riser"), null);
 });

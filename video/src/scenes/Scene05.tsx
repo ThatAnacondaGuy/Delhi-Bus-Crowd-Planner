@@ -1,49 +1,42 @@
+// Scene 5: the planner on a phone, five shots cut at the four pauses between the five recorded parts (5a to 5e).
+// Phrases (cue index): 5a 0-2, 5b 3-6, 5c 7-9, 5d 10-13, 5e 14-17. Every tap, chip, camera move and label lands on its phrase.
 import React, { createContext, useContext } from "react";
 import { Sequence, useCurrentFrame, useVideoConfig } from "remotion";
 import N from "../numbers.json";
-import { C, Level, LEVELS, clamp01, inOutCubic, lerp, outCubic, prog } from "../theme";
-import { Cam, Caption, Chip, Cursor, DrawBox, FadeIn, Phone, Scene, Sfx, Shot, Spot, TapRing, World } from "../components/ui";
+import { C, Level, LEVELS, RADIUS, SHADOW, TYPE, clamp01, inOutCubic, lerp, outCubic, prog, springSoft } from "../design";
+import { Backdrop, Cam, Captions, Chapter, DrawBox, FitText, Phone, PopChip, SceneShell, Sfx, Shot, SoftCursor, Spot, TapRipple, World, camAt, ordered, useBeats } from "../components/kit";
 import { R, capMeta, capUrl, cards, cx, cy } from "../captures";
-import { sceneCaptionSpans } from "../captions";
-import { LEAD_FRAMES, TAIL_FRAMES, shotStarts } from "../timing";
-import { useAssets } from "../assets";
 import { WHY } from "../layout";
 
-/* ------------------------------------------------------------------ stage: the phone and the caption column */
+/* ------------------------------------------------------------------ stage */
+
+const SCALE = 1.06;
+const PHONE_X = 250;
+const PHONE_Y = 70;
+const AX = 195; // camera anchor inside the 390x844 screen
+const AY = 422;
+const COL_X = 860;
+const COL_W = 1824 - COL_X;
 
 type Stage = { x: number; y: number; scale: number };
-const StageCtx = createContext<Stage>({ x: 190, y: 22, scale: 1 });
-const PHONE_X = 190;
-const PHONE_Y = 22;
-const AX = 195;
-const AY = 422;
+const StageCtx = createContext<Stage>({ x: PHONE_X, y: PHONE_Y, scale: SCALE });
+/** Shot-local frame of phrase i (k of the way through it). */
+const ShotCtx = createContext<{ start: number }>({ start: 0 });
 
-const toCanvas = (st: Stage, sx: number, sy: number) => ({ x: st.x + 12 * st.scale + sx * st.scale, y: st.y + 12 * st.scale + sy * st.scale });
+function useShotBeats() {
+  const { beat, end } = useBeats();
+  const { start } = useContext(ShotCtx);
+  return { at: (i: number, k = 0) => beat(i, k) - start, end: (i: number) => end(i) - start };
+}
 
-/** Camera over page coordinates: puts the centre of a rectangle at screen height `at`, zoom z. */
-// gentle zoom (at most 1.12) keeps every card edge on screen
-const focus = (r: R, z: number, at = 360): Cam => ({ wx: AX, wy: cy(r) + (AY - at) / z, z });
+const BEZEL = 13;
+const toCanvas = (st: Stage, sx: number, sy: number) => ({ x: st.x + BEZEL * st.scale + sx * st.scale, y: st.y + BEZEL * st.scale + sy * st.scale });
+// zoom stays at most about 1.12: the cards span x 16..374 of the 390 px screen, so more would cut their edges
+const focus = (r: R, z0: number, at = 380): Cam => {
+  const z = Math.min(1.12, z0 * 1.02);
+  return { wx: AX, wy: cy(r) + (AY - at) / z, z };
+};
 const TOP: Cam = { wx: AX, wy: AY, z: 1 };
-
-function camAt(u: number, keys: [number, Cam][]): Cam {
-  if (u <= keys[0][0]) return keys[0][1];
-  for (let i = 1; i < keys.length; i++) {
-    if (u <= keys[i][0]) {
-      const [t0, c0] = keys[i - 1];
-      const [t1, c1] = keys[i];
-      const t = inOutCubic(clamp01((u - t0) / Math.max(1, t1 - t0)));
-      return { wx: lerp(c0.wx, c1.wx, t), wy: lerp(c0.wy, c1.wy, t), z: lerp(c0.z, c1.z, t) };
-    }
-  }
-  return keys[keys.length - 1][1];
-}
-
-/** Local frame of a shot, compressed when the shot is shorter than its nominal length (nothing is cut off). */
-function useShot(nominal: number) {
-  const f = useCurrentFrame();
-  const { durationInFrames } = useVideoConfig();
-  return durationInFrames < nominal ? (f * nominal) / durationInFrames : f;
-}
 
 const PhoneStage: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const st = useContext(StageCtx);
@@ -54,31 +47,34 @@ const PhoneStage: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   );
 };
 
-const Col: React.FC<{ children: React.ReactNode; top?: number }> = ({ children, top = 150 }) => (
-  <div style={{ position: "absolute", left: 760, top, width: 1060, display: "flex", flexDirection: "column", gap: 26 }}>{children}</div>
-);
-
-const Label: React.FC<{ children: React.ReactNode; size?: number; color?: string }> = ({ children, size = 56, color = C.ink }) => (
-  <div style={{ fontSize: size, fontWeight: 700, color, lineHeight: 1.15 }}>{children}</div>
-);
-
-/** shows children between two frames with a short fade */
-const Between: React.FC<{ u: number; from: number; to?: number; children: React.ReactNode; rise?: number }> = ({ u, from, to = 99999, children, rise = 14 }) => {
-  const t = Math.min(prog(u, from, 12, outCubic), 1 - prog(u, to, 6));
-  if (t <= 0) return null;
-  return <div style={{ opacity: t, transform: `translateY(${(1 - t) * rise}px)` }}>{children}</div>;
+/** A block in the right column: rises in with the soft spring on `from`, leaves on `to`. */
+const Slot: React.FC<{ from: number; to?: number; top: number; children: React.ReactNode }> = ({ from, to = 1e9, top, children }) => {
+  const f = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const t = springSoft(f, fps, from, 20) * (1 - prog(f, to, 8, inOutCubic));
+  if (t <= 0.001) return null;
+  return <div style={{ position: "absolute", left: COL_X, top, width: COL_W, opacity: t, transform: `translateY(${(1 - t) * 26}px)` }}>{children}</div>;
 };
+
+const Kicker: React.FC<{ text: string; color?: string }> = ({ text, color = C.textDim }) => <FitText text={text} size={TYPE.label} width={COL_W} weight={600} color={color} />;
+const Head: React.FC<{ text: string; color?: string }> = ({ text, color = C.text }) => <FitText text={text} size={TYPE.h2} width={COL_W} maxLines={2} weight={800} color={color} lineHeight={1.12} />;
 
 const Route: React.FC<{ name: string }> = ({ name }) => {
   const q = capMeta(name).query;
-  return (
-    <div style={{ fontSize: 36, color: C.grey, fontWeight: 400 }}>
-      {q.from} → {q.to} · {q.day === "weekend" ? "Weekend" : "Weekday"} {q.depart}
-    </div>
-  );
+  return <Kicker text={`${q.from} → ${q.to} · ${q.day === "weekend" ? "Weekend" : "Weekday"} ${q.depart}`} />;
 };
 
-const worldImg = (name: string, extra?: React.ReactNode) => {
+/** Role label + chip, the chip popping on `at`. */
+const Verdict: React.FC<{ role: string; level: Level; at: number }> = ({ role, level, at }) => (
+  <>
+    <FitText text={role} size={TYPE.body} width={COL_W} weight={600} color={C.textDim} />
+    <div style={{ marginTop: 14, height: 90 }}>
+      <PopChip level={level} at={at} size={TYPE.h2} />
+    </div>
+  </>
+);
+
+const page = (name: string, extra?: React.ReactNode) => {
   const m = capMeta(name);
   return (
     <>
@@ -88,44 +84,39 @@ const worldImg = (name: string, extra?: React.ReactNode) => {
   );
 };
 
-/* ------------------------------------------------------------------ 5a: journey 1 */
+/* ------------------------------------------------------------------ 5a: the brief's example */
 
 const S5a: React.FC = () => {
-  const u = useShot(300);
+  const u = useCurrentFrame();
+  const { at } = useShotBeats();
   const name = "m-j1-full";
   const cs = cards(name);
-  const keys: [number, Cam][] = [
-    [0, TOP], [40, TOP], [85, focus(cs[0].chip, 1, 360)], [135, focus(cs[0].chip, 1.12, 330)], [170, focus(cs[0].chip, 1.12, 330)],
-    [212, focus(cs[1].chip, 1, 360)], [255, focus(cs[1].chip, 1.12, 330)], [300, focus(cs[1].chip, 1.12, 330)],
-  ];
-  const cam = camAt(u, keys);
-  const s0 = prog(u, 100, 18) * (1 - prog(u, 172, 14));
-  const s1 = prog(u, 232, 18);
+  const cam = camAt(u, ordered([[0, TOP], [at(1) - 14, TOP], [at(1) + 14, focus(cs[0].chip, 1.1)], [at(2) - 8, focus(cs[0].chip, 1.1)], [at(2) + 18, focus(cs[1].chip, 1.1)]]));
+  const s0 = prog(u, at(1), 10) * (1 - prog(u, at(2) - 6, 8));
+  const s1 = prog(u, at(2) + 8, 10);
   return (
     <>
       <PhoneStage>
         <World cam={cam} ax={AX} ay={AY}>
-          {worldImg(name)}
-          <Spot r={cs[0].chip} amount={s0} color={C.amber} pad={8} radius={26} />
-          <Spot r={cs[1].chip} amount={s1} color={C.teal} pad={8} radius={26} />
+          {page(name)}
+          <Spot r={cs[0].chip} amount={s0} color={C.amberGlow} pad={8} radius={26} />
+          <Spot r={cs[1].chip} amount={s1} color={C.tealGlow} pad={8} radius={26} />
         </World>
       </PhoneStage>
-      <Col>
-        <FadeIn at={4}>
-          <Route name={name} />
-        </FadeIn>
-        <Between u={u} from={56} to={196}>
-          <Label color={C.grey}>Fastest</Label>
-          <Chip level="standing" size={84} style={{ marginTop: 14 }} />
-        </Between>
-      </Col>
-      <Col top={280}>
-        <Between u={u} from={206}>
-          <Label color={C.grey}>Less crowded</Label>
-          <Chip level="seats" size={84} style={{ marginTop: 14 }} />
-        </Between>
-      </Col>
-      <Sfx name="chime" at={236} volume={0.9} />
+      <Slot from={at(0) - 6} top={150}>
+        <Route name={name} />
+        <div style={{ height: 14 }} />
+        <Head text="The brief's own example, six in the evening" />
+      </Slot>
+      <Slot from={at(1) - 2} top={400}>
+        <Verdict role="Fastest" level="standing" at={at(1) + 4} />
+      </Slot>
+      <Slot from={at(2) - 2} top={600}>
+        <Verdict role="Less crowded · a slightly slower bus" level="seats" at={at(2) + 4} />
+      </Slot>
+      <Sfx name="pop" at={at(1) + 4} volume={0.45} />
+      <Sfx name="pop" at={at(2) + 4} volume={0.45} />
+      <Sfx name="chime" at={at(2) + 8} volume={0.55} />
     </>
   );
 };
@@ -133,45 +124,47 @@ const S5a: React.FC = () => {
 /* ------------------------------------------------------------------ 5b: the reverse */
 
 const S5b: React.FC = () => {
-  const u = useShot(240);
+  const u = useCurrentFrame();
+  const { at } = useShotBeats();
   const m1 = capMeta("m-j1-full");
   const p = (m1.rects.presets as R[])[1];
   const tx = Math.min(cx(p), 352);
   const ty = cy(p);
+  const tap = at(3) + 16;
+  const swap = prog(u, tap + 8, 10);
   const cs = cards("m-j2-full");
-  const keys: [number, Cam][] = [[0, TOP], [52, TOP], [90, focus(cs[0].chip, 1.12, 330)], [135, focus(cs[0].chip, 1.12, 330)], [178, focus(cs[1].chip, 1, 380)], [240, focus(cs[1].chip, 1, 380)]];
-  const cam2 = camAt(u, keys);
-  const swap = prog(u, 38, 10);
+  const cam2 = camAt(u, ordered([[0, TOP], [at(4) - 12, TOP], [at(4) + 14, focus(cs[0].chip, 1.1)], [at(6) - 10, focus(cs[0].chip, 1.1)], [at(6) + 16, focus(cs[1].chip, 1.04, 400)]]));
   return (
     <>
       <PhoneStage>
         <World cam={TOP} ax={AX} ay={AY} opacity={1 - swap}>
-          {worldImg("m-j1-full")}
-          <Cursor pts={[[6, 250, 470], [28, tx, ty]]} />
-          <TapRing x={tx} y={ty} at={30} />
+          {page("m-j1-full")}
+          <SoftCursor pts={[[Math.max(2, tap - 22), 250, 470], [tap, tx, ty]]} hideAfter={6} />
+          <TapRipple x={tx} y={ty} at={tap} />
         </World>
         <World cam={cam2} ax={AX} ay={AY} opacity={swap}>
-          {worldImg("m-j2-full")}
-          <DrawBox r={cs[1].card} t={prog(u, 176, 22, outCubic)} color={C.amber} pad={4} radius={22} />
+          {page("m-j2-full")}
+          <Spot r={cs[0].chip} amount={prog(u, at(4), 10) * (1 - prog(u, at(6) - 4, 8))} color={C.redGlow} pad={8} radius={26} />
+          <DrawBox r={cs[1].card} t={prog(u, at(6) + 6, 20, outCubic)} color={C.amberGlow} pad={4} radius={22} />
         </World>
       </PhoneStage>
-      <Col>
-        <FadeIn at={4}>
-          <Label>The same road, the other direction</Label>
-        </FadeIn>
-        <Between u={u} from={60} to={170}>
-          <Label color={C.grey}>Fastest</Label>
-          <Chip level="crowded" size={84} style={{ marginTop: 14 }} />
-        </Between>
-      </Col>
-      <Col top={330}>
-        <Between u={u} from={178}>
-          <Label color={C.grey}>Leave later</Label>
-          <Chip level="standing" size={84} style={{ marginTop: 14 }} />
-        </Between>
-      </Col>
-      <Sfx name="tap" at={30} />
-      <Sfx name="chime" at={64} volume={0.9} />
+      <Slot from={at(3) - 6} top={150}>
+        <Route name="m-j2-full" />
+        <div style={{ height: 14 }} />
+        <Head text="Reverse it, and the answer changes" />
+      </Slot>
+      <Slot from={at(4) - 2} to={at(6) - 4} top={400}>
+        <Verdict role="Fastest" level="crowded" at={at(4) + 4} />
+      </Slot>
+      <Slot from={at(5) - 2} to={at(6) - 4} top={600}>
+        <FitText text="Same road, the other direction" size={TYPE.body} width={COL_W} weight={600} color={C.text} />
+      </Slot>
+      <Slot from={at(6) - 2} top={400}>
+        <Verdict role="Leave later" level="standing" at={at(6) + 6} />
+      </Slot>
+      <Sfx name="tap" at={tap} volume={0.45} />
+      <Sfx name="pop" at={at(4) + 4} volume={0.45} />
+      <Sfx name="ding" at={at(6) + 6} volume={0.4} />
     </>
   );
 };
@@ -179,35 +172,34 @@ const S5b: React.FC = () => {
 /* ------------------------------------------------------------------ 5c: Why? */
 
 const S5c: React.FC = () => {
-  const u = useShot(270);
+  const u = useCurrentFrame();
+  const { at, end } = useShotBeats();
   const st = useContext(StageCtx);
   const name = "m-j1-full";
   const cs = cards(name);
   const scrollY0 = cs[0].chip.y - 132; // where the app had scrolled to when the sheet was captured
   const base: Cam = { wx: AX, wy: scrollY0 + AY, z: 1 };
-  const zoomTo: Cam = { wx: AX, wy: scrollY0 + WHY.focus.y, z: 1.12 };
-  const cam = camAt(u, [[0, { ...base, wy: base.wy - 90 }], [32, base], [92, base], [140, zoomTo], [270, zoomTo]]);
+  const zoomTo: Cam = { wx: AX, wy: scrollY0 + WHY.focus.y, z: 1.08 };
+  const tap = at(7) + 10;
+  const cam = camAt(u, ordered([[0, { ...base, wy: base.wy - 90 }], [Math.max(1, tap - 12), base], [tap + 30, base], [at(8) + 10, zoomTo]]));
   const why = cs[0].why;
-  const rise = prog(u, 42, 24, outCubic);
-  const dark = prog(u, 42, 14);
-  const pt = (q: { x: number; y: number }) => {
-    const sx = AX + (q.x - cam.wx) * cam.z;
-    const sy = AY + (scrollY0 + q.y - cam.wy) * cam.z;
-    return toCanvas(st, sx, sy);
-  };
-  const items: { at: number; label: string; sub: string; q: { x: number; y: number }; y: number }[] = [
-    { at: 104, label: `about 1 in ${N.one_in} riders`, sub: "app tickets, scaled up to everyone on board", q: WHY.lead, y: 250 },
-    { at: 128, label: "People on board", sub: "the range on the busiest stretch", q: WHY.people, y: 430 },
-    { at: 152, label: "Seats", sub: "what the bus has", q: WHY.seats, y: 610 },
-    { at: 176, label: "Rated total", sub: "seats plus standing places", q: WHY.rated, y: 760 },
+  const rise = prog(u, tap + 4, 20, outCubic);
+  const dark = prog(u, tap + 4, 12);
+  const pt = (q: { x: number; y: number }) => toCanvas(st, AX + (q.x - cam.wx) * cam.z, AY + (scrollY0 + q.y - cam.wy) * cam.z);
+  const span9 = Math.max(30, end(9) - at(9));
+  const items = [
+    { at: at(8), label: `about 1 in ${N.one_in} riders`, sub: "app tickets, scaled up to everyone on board", q: WHY.lead, y: 300 },
+    { at: at(9), label: "People on board", sub: "the range on the busiest stretch", q: WHY.people, y: 470 },
+    { at: at(9) + span9 * 0.33, label: "Seats", sub: "what the bus has", q: WHY.seats, y: 610 },
+    { at: at(9) + span9 * 0.66, label: "Rated total", sub: "seats plus standing places", q: WHY.rated, y: 750 },
   ];
   return (
     <>
       <PhoneStage>
         <World cam={cam} ax={AX} ay={AY}>
-          {worldImg(name)}
-          <Cursor pts={[[8, 300, scrollY0 + 640], [30, cx(why), cy(why)]]} />
-          <TapRing x={cx(why)} y={cy(why)} at={34} />
+          {page(name)}
+          <SoftCursor pts={[[Math.max(2, tap - 20), 300, scrollY0 + 640], [tap, cx(why), cy(why)]]} hideAfter={6} />
+          <TapRipple x={cx(why)} y={cy(why)} at={tap} />
           <div style={{ position: "absolute", left: 0, top: scrollY0, width: 390, height: 844, background: "#0d1117", opacity: 0.5 * dark }} />
           <div style={{ position: "absolute", left: 0, top: scrollY0 + WHY.panelTop, width: 390, height: 844 - WHY.panelTop, overflow: "hidden", transform: `translateY(${(1 - rise) * 440}px)` }}>
             <Shot src={capUrl("m-j1-why")} w={390} h={844} y={-WHY.panelTop} />
@@ -217,32 +209,32 @@ const S5c: React.FC = () => {
       <svg width={1920} height={1080} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}>
         {items.map((it, i) => {
           const a = pt(it.q);
-          const t = prog(u, it.at, 18, outCubic);
-          const bx = 780;
-          const by = it.y + 36;
+          const t = prog(u, it.at, 16, outCubic);
+          const bx = COL_X - 24;
+          const by = it.y + 30;
           const len = Math.hypot(bx - a.x, by - a.y);
           return t > 0 ? (
-            <g key={i} opacity={Math.min(1, t * 2)}>
-              <line x1={a.x} y1={a.y} x2={bx} y2={by} stroke={C.blue} strokeWidth={3} strokeDasharray={len} strokeDashoffset={len * (1 - t)} />
-              <circle cx={a.x} cy={a.y} r={8} fill={C.blue} />
+            <g key={i}>
+              <line x1={a.x} y1={a.y} x2={bx} y2={by} stroke={C.blueGlow} strokeWidth={3} strokeDasharray={len} strokeDashoffset={len * (1 - t)} />
+              <circle cx={a.x} cy={a.y} r={8} fill={C.blueGlow} opacity={t} />
+              <circle cx={a.x} cy={a.y} r={8 + 14 * t} fill="none" stroke={C.blueGlow} strokeWidth={2} opacity={1 - t} />
             </g>
           ) : null;
         })}
       </svg>
-      <FadeIn at={4} style={{ position: "absolute", left: 760, top: 120 }}>
-        <Label>Tap Why?</Label>
-      </FadeIn>
+      <Slot from={at(7) - 6} top={150}>
+        <Head text="Tap Why?" />
+      </Slot>
       {items.map((it, i) => (
-        <div key={i} style={{ position: "absolute", left: 800, top: it.y }}>
-          <Between u={u} from={it.at + 10}>
-            <Label size={52} color={C.blue}>
-              {it.label}
-            </Label>
-            <div style={{ fontSize: 36, color: C.grey, marginTop: 4 }}>{it.sub}</div>
-          </Between>
-        </div>
+        <Slot key={i} from={it.at + 8} top={it.y}>
+          <FitText text={it.label} size={TYPE.body} width={COL_W} weight={800} color={C.blueGlow} />
+          <FitText text={it.sub} size={TYPE.label} width={COL_W} weight={500} color={C.textDim} style={{ marginTop: 4 }} />
+        </Slot>
       ))}
-      <Sfx name="tap" at={34} />
+      <Sfx name="tap" at={tap} volume={0.45} />
+      {items.map((it, i) => (
+        <Sfx key={i} name="pop" at={it.at + 8} volume={0.3} />
+      ))}
     </>
   );
 };
@@ -250,129 +242,134 @@ const S5c: React.FC = () => {
 /* ------------------------------------------------------------------ 5d: Mandi House to Laxmi Nagar */
 
 const S5d: React.FC = () => {
-  const u = useShot(330);
+  const u = useCurrentFrame();
+  const { at } = useShotBeats();
   const name = "m-j4-full";
   const cs = cards(name);
-  const keys: [number, Cam][] = [
-    [0, TOP], [35, TOP], [80, focus(cs[0].chip, 1, 360)], [125, focus(cs[0].chip, 1.12, 330)], [160, focus(cs[0].chip, 1.12, 330)],
-    [210, focus(cs[1].chip, 1, 380)], [255, focus(cs[1].chip, 1.12, 340)], [330, focus(cs[1].chip, 1.12, 340)],
-  ];
-  const cam = camAt(u, keys);
-  const arrow = prog(u, 168, 26, inOutCubic);
+  const cam = camAt(u, ordered([[0, TOP], [at(10) + 10, TOP], [at(10) + 34, focus(cs[0].chip, 1.1)], [at(11) - 6, focus(cs[0].chip, 1.1)], [at(11) + 24, focus(cs[1].chip, 1.04, 400)]]));
+  const arrow = prog(u, at(11), 22, inOutCubic);
   return (
     <>
       <PhoneStage>
         <World cam={cam} ax={AX} ay={AY}>
-          {worldImg(name)}
-          <Spot r={cs[0].chip} amount={prog(u, 95, 16) * (1 - prog(u, 165, 12))} color={C.red} pad={8} radius={26} />
-          <DrawBox r={cs[1].card} t={prog(u, 212, 22, outCubic)} color={C.amber} pad={4} radius={22} />
+          {page(name)}
+          <Spot r={cs[0].chip} amount={prog(u, at(10) + 20, 12) * (1 - prog(u, at(11) - 2, 8))} color={C.redGlow} pad={8} radius={26} />
+          <DrawBox r={cs[1].card} t={prog(u, at(12), 22, outCubic)} color={C.amberGlow} pad={4} radius={22} />
         </World>
       </PhoneStage>
-      <Col top={130}>
-        <FadeIn at={4}>
-          <Route name={name} />
-        </FadeIn>
-        <Between u={u} from={60}>
-          <Label color={C.grey}>Fastest</Label>
-          <Chip level="crowded" size={84} style={{ marginTop: 14 }} />
-        </Between>
-        <div style={{ height: 70, marginLeft: 120 }}>
-          <svg width={120} height={70} viewBox="0 0 120 70">
-            <path d="M60 4 L60 56" stroke={C.grey} strokeWidth={5} strokeLinecap="round" fill="none" strokeDasharray={52} strokeDashoffset={52 * (1 - arrow)} />
-            <path d="M44 42 L60 60 L76 42" stroke={C.grey} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" fill="none" opacity={arrow > 0.85 ? 1 : 0} />
-          </svg>
+      <Slot from={at(10) - 6} top={150}>
+        <Route name={name} />
+        <div style={{ height: 14 }} />
+        <Verdict role="Fastest" level="crowded" at={at(10) + 20} />
+      </Slot>
+      <div style={{ position: "absolute", left: COL_X + 40, top: 420, opacity: clamp01(arrow * 2) }}>
+        <svg width={80} height={90} viewBox="0 0 80 90">
+          <path d="M40 4 L40 74" stroke={C.textDim} strokeWidth={5} strokeLinecap="round" fill="none" strokeDasharray={70} strokeDashoffset={70 * (1 - arrow)} />
+          <path d="M22 56 L40 78 L58 56" stroke={C.textDim} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" fill="none" opacity={arrow > 0.85 ? 1 : 0} />
+        </svg>
+      </div>
+      <Slot from={at(11)} top={530}>
+        <FitText text="Leave a little later" size={TYPE.body} width={COL_W} weight={600} color={C.textDim} />
+        <div style={{ marginTop: 14, height: 90 }}>
+          <PopChip level="standing" at={at(12)} size={TYPE.h2} />
         </div>
-        <Between u={u} from={196}>
-          <Label color={C.grey}>Leave later</Label>
-          <Chip level="standing" size={84} style={{ marginTop: 14 }} />
-        </Between>
-      </Col>
-      <Sfx name="ding" at={206} volume={0.5} />
+      </Slot>
+      <Slot from={at(13) - 2} top={760}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <svg width={40} height={40} viewBox="0 0 40 40">
+            <circle cx="20" cy="20" r="18" fill="none" stroke={C.tealGlow} strokeWidth="3" />
+            <path d="M11 21 L18 28 L30 13" fill="none" stroke={C.tealGlow} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <FitText text="Offered only when it's really better" size={TYPE.body} width={COL_W - 60} weight={600} color={C.text} />
+        </div>
+      </Slot>
+      <Sfx name="pop" at={at(10) + 20} volume={0.45} />
+      <Sfx name="ding" at={at(12)} volume={0.4} />
     </>
   );
 };
 
-/* ------------------------------------------------------------------ 5e: Hindi, evidence, No data, the chip family */
+/* ------------------------------------------------------------------ 5e: how sure, No data, the chip family */
 
 const FAMILY: Level[] = ["seats", "standing", "crowded", "no_data"];
 
+const EvidencePill: React.FC<{ en: string; hi: string; glow: number }> = ({ en, hi, glow }) => (
+  <div style={{ display: "inline-flex", alignItems: "center", gap: 14, padding: "12px 24px", borderRadius: RADIUS.pill, background: "rgba(255,255,255,0.08)", border: `2px solid rgba(255,255,255,${0.18 + 0.5 * glow})`, boxShadow: glow ? `0 0 ${30 * glow}px ${C.amberGlow}55` : undefined }}>
+    <span style={{ fontSize: TYPE.label, fontWeight: 700, color: C.text, whiteSpace: "nowrap" }}>{en}</span>
+    <span style={{ fontSize: TYPE.label, fontWeight: 500, color: C.textDim, whiteSpace: "nowrap" }}>· {hi}</span>
+  </div>
+);
+
 const S5e: React.FC = () => {
-  const u = useShot(300);
+  const u = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { at } = useShotBeats();
   const m1 = capMeta("m-j1-full");
   const hi = m1.rects.langHi as R;
   const hiCs = cards("m-j1-hi-full");
-  const seatCs = cards("m-j5-seat-full");
-  const seatIdx = Math.max(0, seatCs.findIndex((c) => c.roles.includes("less_crowded")));
   const ndCs = cards("m-nodata-full");
-  const toHi = prog(u, 28, 8);
-  const toSeat = prog(u, 78, 8);
-  const toND = prog(u, 124, 8);
-  const hiCam = camAt(u, [[0, TOP], [40, TOP], [72, focus(hiCs[0].chip, 1.12, 330)], [300, focus(hiCs[0].chip, 1.12, 330)]]);
-  const seatCam = camAt(u - 78, [[0, TOP], [14, TOP], [44, focus(seatCs[seatIdx].chip, 1, 380)], [300, focus(seatCs[seatIdx].chip, 1, 380)]]);
-  const ndCam = camAt(u - 124, [[0, TOP], [10, TOP], [34, focus(ndCs[0].chip, 1.12, 330)], [300, focus(ndCs[0].chip, 1.12, 330)]]);
-  const fam = (i: number) => prog(u, 192 + i * 12, 18, outCubic);
-  const pulse = prog(u, 248, 24, inOutCubic);
-  const hiPtr = { x: cx(hi), y: cy(hi) };
-  const layer = (name: string, cam: Cam, op: number, extra?: React.ReactNode) =>
-    op > 0 ? (
-      <World cam={cam} ax={AX} ay={AY} opacity={op}>
-        {worldImg(name, extra)}
-      </World>
-    ) : null;
+  const tap = at(14) + 8;
+  const toHi = prog(u, tap + 8, 8);
+  const toND = prog(u, at(16) - 4, 8);
+  const hiCam = camAt(u, ordered([[0, TOP], [tap + 14, TOP], [tap + 40, focus(hiCs[0].evidence ?? hiCs[0].chip, 1.1, 420)]]));
+  const ndCam = camAt(u, ordered([[0, TOP], [at(16), TOP], [at(16) + 24, focus(ndCs[0].chip, 1.1, 380)]]));
+  const rough = prog(u, at(15), 10) * (1 - prog(u, at(16) - 6, 8));
+  const famAt = at(17) - 4;
   return (
     <>
       <PhoneStage>
         <World cam={TOP} ax={AX} ay={AY} opacity={1 - toHi}>
-          {worldImg("m-j1-full")}
-          <Cursor pts={[[6, 240, 440], [24, hiPtr.x, hiPtr.y]]} />
-          <TapRing x={hiPtr.x} y={hiPtr.y} at={26} />
+          {page("m-j1-full")}
+          <SoftCursor pts={[[Math.max(2, tap - 20), 240, 440], [tap, cx(hi), cy(hi)]]} hideAfter={6} />
+          <TapRipple x={cx(hi)} y={cy(hi)} at={tap} />
         </World>
-        {layer("m-j1-hi-full", hiCam, toHi * (1 - toSeat))}
-        {layer("m-j5-seat-full", seatCam, toSeat * (1 - toND), <Spot r={seatCs[seatIdx].card} amount={prog(u, 100, 14)} color={C.teal} pad={4} radius={22} />)}
-        {layer("m-nodata-full", ndCam, toND, <DrawBox r={ndCs[0].chip} t={prog(u, 160, 24, outCubic)} color={C.grey} pad={6} radius={24} />)}
+        {toHi > 0 && toND < 1 ? (
+          <World cam={hiCam} ax={AX} ay={AY} opacity={toHi * (1 - toND)}>
+            {page("m-j1-hi-full")}
+            {hiCs[0].evidence ? <Spot r={hiCs[0].evidence} amount={prog(u, at(15), 10)} color={C.amberGlow} pad={6} radius={10} /> : null}
+          </World>
+        ) : null}
+        {toND > 0 ? (
+          <World cam={ndCam} ax={AX} ay={AY} opacity={toND}>
+            {page("m-nodata-full", <DrawBox r={ndCs[0].chip} t={prog(u, at(16) + 20, 24, outCubic)} color={C.grey} pad={6} radius={24} />)}
+          </World>
+        ) : null}
       </PhoneStage>
 
-      <Col top={130}>
-        <Between u={u} from={4} to={122}>
-          <Label>Each card says how sure we are</Label>
-        </Between>
-        <Between u={u} from={126} to={186}>
-          <Label color={C.grey}>Too little data?</Label>
-          <Chip level="no_data" size={84} style={{ marginTop: 14 }} />
-        </Between>
-      </Col>
-      <Col top={340}>
-        <Between u={u} from={24} to={76}>
-          <Label size={48} color={C.grey}>
-            English · हिंदी
-          </Label>
-        </Between>
-        <Between u={u} from={86} to={122}>
-          <Label size={44} color={C.grey}>
-            Rough guess · अंदाज़ा (कम टिकट)
-          </Label>
-        </Between>
-      </Col>
+      <Slot from={at(14) - 6} to={famAt} top={150}>
+        <Kicker text="English · हिंदी" />
+        <div style={{ height: 14 }} />
+        <Head text="Each card says how sure we are" />
+      </Slot>
+      <Slot from={at(14) + 16} to={at(16) - 6} top={420}>
+        <EvidencePill en="Rough guess" hi="अंदाज़ा (कम टिकट)" glow={rough} />
+        <div style={{ height: 18 }} />
+        <EvidencePill en="Based on many tickets" hi="कई टिकटों पर आधारित" glow={0} />
+      </Slot>
+      <Slot from={at(16) - 2} to={famAt} top={420}>
+        <Verdict role="Too little data?" level="no_data" at={at(16) + 8} />
+      </Slot>
 
-      <Col top={40}>
-        {FAMILY.map((lv, i) => (
-          <div key={lv} style={{ opacity: fam(i), transform: `translateX(${(1 - fam(i)) * 80}px)`, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
-            <Chip
-              level={lv}
-              size={56}
-              glow={lv === "no_data" ? Math.sin(pulse * Math.PI) : 0}
-              style={{ transform: lv === "no_data" ? `scale(${1 + 0.06 * Math.sin(pulse * Math.PI)})` : undefined, transformOrigin: "left center" }}
-            />
-            <div style={{ fontSize: 38, color: LEVELS[lv].color, fontWeight: 700, paddingLeft: 12 }}>{LEVELS[lv].hi}</div>
-          </div>
-        ))}
-        <Between u={u} from={236}>
-          <div style={{ fontSize: 40, color: C.grey }}>Rough guess · अंदाज़ा (कम टिकट)</div>
-          <div style={{ fontSize: 40, color: C.grey, marginTop: 8 }}>Based on many tickets · कई टिकटों पर आधारित</div>
-        </Between>
-      </Col>
-      <Sfx name="tap" at={26} />
-      <Sfx name="pop" at={248} volume={0.5} />
+      {/* the chip family, with the Hindi the app shows */}
+      <div style={{ position: "absolute", left: COL_X, top: 130, width: COL_W }}>
+        {FAMILY.map((lv, i) => {
+          const t = springSoft(u, fps, famAt + i * 5, 18);
+          if (t <= 0.001) return null;
+          return (
+            <div key={lv} style={{ position: "absolute", left: 0, top: i * 172, opacity: t, transform: `translateX(${(1 - t) * 60}px)` }}>
+              <PopChip level={lv} at={famAt + i * 5} size={TYPE.body} />
+              <div style={{ marginTop: 10, paddingLeft: 16 }}>
+                <FitText text={LEVELS[lv].hi} size={TYPE.label} width={COL_W - 16} weight={600} color={LEVELS[lv].glow} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <Sfx name="tap" at={tap} volume={0.45} />
+      <Sfx name="pop" at={at(16) + 8} volume={0.45} />
+      {FAMILY.map((_, i) => (
+        <Sfx key={i} name="pop" at={famAt + i * 5} volume={0.3} />
+      ))}
     </>
   );
 };
@@ -383,33 +380,40 @@ const SHOTS = [S5a, S5b, S5c, S5d, S5e];
 
 export const Scene05: React.FC = () => {
   const f = useCurrentFrame();
-  const { durationInFrames: D } = useVideoConfig();
-  const { parts, vo } = useAssets();
-  const starts = shotStarts(D, parts);
+  const { durationInFrames: D, fps } = useVideoConfig();
+  const { tl, beat } = useBeats();
+  const starts = tl.shots;
   const ends = [...starts.slice(1), D];
-  // phone: slides in over 24 frames, shrinks and moves left for the chip family, slides off in the last 24
-  const k = Math.min(1, (ends[4] - starts[4]) / 300);
-  const shrinkAt = starts[4] + Math.round(186 * k);
-  const slideIn = prog(f, 0, 24, outCubic);
-  const shrink = prog(f, shrinkAt, 24, inOutCubic);
-  const off = prog(f, D - 24, 24, inOutCubic);
-  const scale = lerp(1, 0.7, shrink);
-  const x = lerp(-480, PHONE_X, slideIn) - 100 * shrink - off * 760;
-  const y = lerp(PHONE_Y, 190, shrink);
+  const slideIn = springSoft(f, fps, 0, 26);
+  const off = prog(f, D - 16, 16, inOutCubic);
+  const shrink = prog(f, beat(17) - 8, 18, inOutCubic);
+  const float = Math.sin(f / 45) * 6;
+  const scale = lerp(SCALE, SCALE * 0.94, shrink);
+  const x = lerp(-520, PHONE_X, slideIn) - off * 900;
+  const y = PHONE_Y + float + shrink * 20;
   const stage: Stage = { x, y, scale };
-
-  // captions: each part's text is spread over its own span of the voice
-  const spans = sceneCaptionSpans(5, { voFrames: vo[4] != null ? Math.round(vo[4]! * 30) : null, duration: D, base: 1440, lead: LEAD_FRAMES, tail: TAIL_FRAMES, partStarts: starts });
   return (
-    <Scene>
+    <SceneShell>
+      <Backdrop tint={[C.blue, C.teal, "#40275a"]} />
+      <Chapter n="03" text="The planner" hold={starts[1] - 20} x={COL_X} />
       <StageCtx.Provider value={stage}>
         {SHOTS.map((S, i) => (
           <Sequence key={i} from={starts[i]} durationInFrames={Math.max(1, ends[i] - starts[i])} layout="none" name={`5${"abcde"[i]}`}>
-            <S />
+            <ShotCtx.Provider value={{ start: starts[i] }}>
+              <S />
+            </ShotCtx.Provider>
           </Sequence>
         ))}
       </StageCtx.Provider>
-      <Caption spans={spans} bottom={30} />
-    </Scene>
+      {/* shot changes: a soft flash on the phone glass */}
+      {starts.slice(1).map((s, i) => {
+        const t = 1 - Math.abs(f - s) / 6;
+        return t > 0 ? <div key={i} style={{ position: "absolute", left: x + 14 * scale, top: y + 14 * scale, width: 390 * scale, height: 844 * scale, borderRadius: 47 * scale, background: "#ffffff", opacity: 0.35 * t }} /> : null;
+      })}
+      <Captions region={[COL_X - 24, 1824]} />
+      {starts.slice(1).map((s, i) => (
+        <Sfx key={i} name="swoop" at={s - 4} volume={0.18} len={30} />
+      ))}
+    </SceneShell>
   );
 };

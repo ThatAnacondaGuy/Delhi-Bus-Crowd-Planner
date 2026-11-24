@@ -1,10 +1,11 @@
 # Demo film (Remotion)
 
 The 3-minute demo film for the Delhi Bus Crowding Planner, by **Team Kshama** (Aniket Ingale, Ashish Maurya). It is a
-Remotion project: React components rendered frame by frame to H.264. The plan, the scene table, the voice-over script and
-the animation spec are in [`docs/DEMO_VIDEO_SCRIPT.md`](../docs/DEMO_VIDEO_SCRIPT.md); this folder builds exactly that film.
+Remotion project: React components rendered frame by frame to H.264. The plan and the voice-over script are in
+[`docs/DEMO_VIDEO_SCRIPT.md`](../docs/DEMO_VIDEO_SCRIPT.md); this folder builds that film.
 
-1920×1080, 30 fps, 9 scenes, 5400 frames (3:00) before the voice is in.
+1920×1080, 30 fps, 9 scenes. With the recorded voice it is about 3:04 (the voice sets the length); without any voice it is
+the script's 3:00 draft.
 
 > **Licence note.** Remotion is free for individuals and for companies of up to 3 people. Team Kshama is 2 people, so the
 > free licence covers this film. Nothing here is a paid or hosted service.
@@ -13,7 +14,7 @@ the animation spec are in [`docs/DEMO_VIDEO_SCRIPT.md`](../docs/DEMO_VIDEO_SCRIP
 
 Committed: the code, `package.json` with exact versions, `package-lock.json`, the numbers file `src/numbers.json`, the capture
 metadata `src/captures.generated.json`, and the scripts. **Never committed** (see `.gitignore`): `node_modules/`, `out/`,
-and everything you drop into `public/` (voice, music, sound effects, clips, app captures).
+`video/extra resources/` and everything in `public/` (voice, music, sound effects, app captures, `assets.json`).
 
 ## One-time setup
 
@@ -22,65 +23,79 @@ cd video
 npm install          # exact versions from package-lock.json; Remotion downloads its own headless Chrome on the first render
 ```
 
+## Final render
+
+```bash
+# 1. copy the voice, sound and music files from "video/extra resources/" into video/public/ (originals untouched)
+bash video/scripts/import_extra.sh
+# 2. clean every voice file (-16 LUFS), find the five parts of scene 5 from its pauses, rescan (speech segments included)
+bash video/scripts/prep_audio.sh
+# 3. render: captions.srt + sync-table.md + the film, mastered (about 3 minutes), then the thumbnail
+cd video && npm run render && npm run thumbnail
+```
+
+Results in `video/out/`: `kshama-delhi-bus-crowding.mp4` (1920x1080, 30 fps, H.264 yuv420p faststart + AAC 48 kHz, -16 LUFS,
+true peak under -1.0 dBTP), `captions.srt` (English, for the upload), `sync-table.md` (every caption against the speech it
+sits on) and `thumbnail.png` (1280x720).
+
+`import_extra.sh` finds `voice over /scene-NN.*` (the folder name ends with a space; scene 5 may also be named like
+`scene 5 the planner in Phone.wav`, `Scene05 ...`, `scene-05 take 2.m4a`, any case: it becomes `public/vo/scene-05.<ext>`,
+and a plain `scene-05.*` wins), `sound effects/*` and the music files ("startup ..." first). The opening is drawn, not filmed:
+no footage is used.
+
+## How the picture follows the voice
+
+1. `prep_audio.sh` cleans each voice file (high-pass 80 Hz, denoise, silence trimmed to a 0.3 s lead, two-pass loudnorm to
+   -16 LUFS) into `public/vo/clean/scene-NN.wav`. Scene 5 (five parts, 5a to 5e, in one file) gets its part starts from its
+   pauses of 0.9 s or more (`scene-05.parts.json`); when there are more than four such pauses it picks the four that best fit
+   the script's word shares and prints them all.
+2. `scripts/scan_assets.mjs` runs `ffmpeg silencedetect` (-35 dB, pauses of 0.2 s or more) on every clean file and writes the
+   pauses to `public/assets.json`.
+3. **The voice sets the timeline.** A voiced scene lasts `HEAD + voice + TAIL` frames (`src/timing.ts`: a short lead before
+   the first word, scene 1 two seconds of city first; a short tail after the last word, longer for the chip that grows in
+   scene 4, the held sentence in scene 7 and the end card). The script's own lengths are used only when a scene has no voice.
+4. **Phrases are placed on the speech.** The voice-over script is split into phrases at its pause marks (`src/captions.ts`).
+   `src/sync.ts` turns the pauses into speech segments and places the phrases on them in order: every phrase boundary goes
+   to a real pause, the one whose share of the speaking time best matches the phrase's share of the characters; if there are
+   fewer pauses than boundaries, a segment is split by relative character length (none needed with the current takes).
+5. **Everything is keyed to those times.** Captions start on the first word of their phrase; every visual beat of a scene
+   (text reveal, tap, chip pop, camera move, counter, shot change, sound effect) is written as "phrase N" in the scene file
+   (`useBeats()`), never as a fixed frame. Scene 5 cuts its five phone shots at the four pauses between parts (8 frames
+   before the first word). `npm run sync-table` writes `out/sync-table.md` with every caption against its speech segment
+   (drift is frame rounding only: at most 16.7 ms).
+
+## Design system
+
+`src/design.ts` holds the canvas (1920×1080), the safe area (96 px left and right, 72 px top; the bottom band is the
+captions'), the type scale (display 96, h1 72, h2 52, body 40, caption 36, label 32, stat 120), colours (the app's level
+colours on a dusk ground), radii, shadows, spacing and the two springs. Scenes take every size from it (a test fails on a
+literal font size in a scene file).
+
+Fonts are loaded explicitly (`src/fonts.tsx`): Inter for English and Noto Sans Devanagari for Hindi, through
+`@remotion/google-fonts`. Nothing is drawn or measured until both are loaded and `document.fonts.ready` resolves
+(`delayRender`), so a text is measured in the font it is painted in. Every dynamic string is fitted to its box with
+`@remotion/layout-utils` (`FitText`, `fitLine`, `fitBlock` in `src/components/kit.tsx`): the scale size when it fits, a
+measured smaller size otherwise, never below 32 px. Captions are phrase by phrase, at most two lines of at most 42
+characters, in a box sized to the measured text, kept under the right column in scenes where the focus is on the left.
+
 ## The film works without your files
 
-With nothing in `public/vo`, `public/music*`, `public/sfx` or `public/clips`, the film renders silent, with the motion-graphics
-opening and the script's own timings. Render that draft any time:
-
-```bash
-cd video && npm run draft          # writes out/draft.mp4 (about a minute)
-npm run studio                     # live preview in the browser
-npm run thumbnail                  # writes out/thumbnail.png (1280x720)
-```
-
-## Dropping in your files
-
-Put them here, then run the two commands under "To finish" below. Every file is optional.
-
-| What | Where and name | What the film does with it |
-|---|---|---|
-| Voice-over | `video/public/vo/scene-01.m4a` ... `scene-09.m4a` (`.wav`, `.mp3`, `.aac`, `.aiff` also work). Scene 5 is one file with five parts and about 1.5 s of silence between them. | `prep_audio.sh` cleans each file (high-pass 80 Hz, denoise, silence trimmed to a 0.3 s lead, -16 LUFS) into `public/vo/clean/scene-NN.wav`. Each scene is as long as the script says, stretched only if its voice plus a 0.6 s tail is longer; the whole film stays within 2:50 to 3:10 by shortening holds, never speech. Scene 5's five phone shots follow the silences. Captions follow the speech. |
-| Music | `video/public/music-1.mp3`, `music-2.mp3` (any `music*.mp3/.m4a/.wav`; played in file-name order). One file also works. | Track 1 from the start; track 2 crossfades in (4 s, equal power, centred on the scene boundary closest to 1:55). Each track is first trimmed to the same loudness (-18 LUFS, measured by `scan_assets.mjs`; the two files differ by about 8 LU). Ducked about 18 dB under speech, full level in the gaps, 1.5 s fade in, 2.5 s fade-out that starts where the last voice line ends (the end card keeps 2.5 s after it). A scene without a voice file yet (scene 5) is ducked only about 8 dB so the film is not dead. |
-| Sound effects | `video/public/sfx/` with names like `whoosh`, `swoosh`, `swoop`, `tap`, `pop`, `chime`, `ding`, `riser`, `road city ambience`, `city ambience`, `engine`, `hiss`, `horn` (matched loosely by file name) | Subtle, well below the voice, loud files trimmed first. Scene 1: road and city ambience, horn, engine idling, door hiss. A swoosh or swoop into scenes 3 to 8. Taps on tap rings, a bubble pop on each level chip, a soft bell chime when a level lands, a ding on the *Leave later* tip, a riser that ends on the reveal (scene 4 and scene 8), a swoosh under the slider sweep. A missing effect is simply skipped. |
-| Stock footage for the opening | `video/public/clips/*.mp4` | Replaces the motion-graphics bus stop in scene 1 (graded dark, with the phone, the clock and the question on top). |
-
-If you keep your files in `video/extra resources/` (`voice over /scene-NN.wav` (the folder name ends with a space, which the script handles), `sound effects/*.mp3`, `bgm/` with files with "background" or "music" in the name), run `bash video/scripts/import_extra.sh` first: it copies them into the folders above (music as `music-1`, `music-2`, "startup ..." first) and never touches the originals. `video/extra resources/` is git-ignored like the rest of the media.
-
-The cleaned voice lengths are read by Remotion's `calculateMetadata`, so the timeline resizes itself. If the total would pass
-3:10 the render prints a warning (the voice itself is too long: re-record or use the "Cut first" lines of the script).
-
-## To finish (when `scene-05.wav` arrives)
-
-Scene 5 (the planner on a phone) is the one voice file still to come. Until it exists the film shows scene 5 at the script's timing, with captions, a soft music bed and no voice (that is the near-final). When the file is there:
-
-```bash
-# 1. drop scene-05.wav (or .m4a/.mp3) into  video/extra resources/voice over /   (next to the other scenes)
-bash video/scripts/import_extra.sh      # copies the voice, sound and music files into video/public/ (originals untouched)
-# 2. one prep command: clean every voice file (-16 LUFS), find the five parts of scene 5 from its pauses, rescan the files
-bash video/scripts/prep_audio.sh
-# 3. one render command
-cd video && npm run render
-```
-
-The result is `video/out/kshama-delhi-bus-crowding.mp4` (1920x1080, 30 fps, H.264 + AAC 48 kHz) and `video/out/captions.srt` (English, for the YouTube upload). If you put the file straight into `video/public/vo/scene-05.wav`, skip step 1.
-
-`npm run render` (`scripts/render.sh`) does four things: scans `public/`, writes `out/captions.srt`, renders with Remotion, then masters the audio (`scripts/master.sh`: two-pass loudnorm to -16 LUFS, a limiter at -1.5 dBFS so the true peak stays under -1.0 dBTP, AAC 256 kbps; the picture is copied) and prints the measured loudness and true peak. `npm run near-final` does the same into `out/near-final.mp4`.
-
-`prep_audio.sh` prints each scene's length and loudness; the voice reads about -16 LUFS. The timeline resizes itself to the voice (scene = script length, stretched only if its voice plus a 0.6 s tail is longer; the end card keeps 2.5 s after its voice). Scene 5's five phone shots follow the four pauses of about 1.5 s in its recording; if `prep_audio.sh` does not find four it says so and the script split is used.
+With nothing in `public/`, the film renders silent at the script's timing (`npm run draft`, about a minute).
+`npm run studio` opens the live preview.
 
 ## Where the numbers come from
 
 Nothing on screen is typed. `scripts/numbers.py` writes `src/numbers.json` from `data/processed/validation_report.json`
 (headline numbers and evidence shares), `data/processed/manifest.json` (run id) and `data/processed/operator_trips.parquet`
-(the top weekday DTC extra trip). The scenes read that file, and a test checks it against the report.
+(the top weekday DTC extra trip). The scenes read that file (counters count up to its values), and a test checks it against
+the report.
 
 ```bash
 cd video && npm run numbers        # same as: venv/bin/python video/scripts/numbers.py from the repo root
 ```
 
-The phone and laptop pictures are real screenshots of the app running on the full data (the journeys and the operator view),
-taken by `scripts/capture.mjs` into `public/captures/`; their sizes and element positions are in `src/captures.generated.json`.
-To retake them (for example after the screens change):
+The phone and laptop pictures are real screenshots of the app running on the full data, taken by `scripts/capture.mjs` into
+`public/captures/`; their sizes and element positions are in `src/captures.generated.json`. To retake them:
 
 ```bash
 # from the repo root
@@ -89,37 +104,33 @@ cd video && npm run capture           # needs Google Chrome; set CHROME_PATH to 
 kill %1
 ```
 
-If a corporate proxy blocks Chrome from reaching `127.0.0.1`, the script already starts Chrome with `--no-proxy-server`.
-
 ## Scenes
 
-| # | Frames (script) | What |
+| # | What | Beats keyed to |
 |---|---|---|
-| 01 | 0-300 | Dusk at a bus stop, a phone, two buses, the question |
-| 02 | 300-570 | Name, promise, the four level chips |
-| 03 | 570-1020 | "Nobody counts people on Delhi buses", three sources, the pipeline |
-| 04 | 1020-1740 | One ticket, five steps, a level |
-| 05 | 1740-3180 | The planner on a phone: journeys 1, 2, 4, the Why? sheet, Hindi, a real No data card, the chip family |
-| 06 | 3180-3840 | The operator view on a laptop: ranked trips, the time slider, the heat strip |
-| 07 | 3840-4740 | The evidence: hits, the miss, the corridor check, "No field count was possible." |
-| 08 | 4740-5130 | Limits (89% Rough guess) and what is next |
-| 09 | 5130-5400 | End card: demo link, GitHub link, team, credit line |
+| 01 | A Delhi street at dusk, drawn: skyline, traffic, the stop; the phone (17:59 to 18:00), the bus pulls in full; the question | phone on phrase 1, bus as it ends, packed windows on 2, question on 3 |
+| 02 | Name and promise over a stylised city map with a glowing corridor; the four level chips pop | title, tagline, chips with their pops |
+| 03 | "Nobody counts people on Delhi buses"; three sources; the ticket counter; matched to timetable and GPS | each phrase |
+| 04 | One ticket: stops, stretches, scaled up to everyone on board, the bus's limit, seats and rated total; the chip built word, dots, colour | each phrase; the three dots pop with three pops |
+| 05 | The planner on a phone: journeys 1, 2 (tap the reverse), Why?, journey 4 (Leave later), Hindi and how sure, a real No data card, the chip family | five shots at the part pauses; each phrase inside |
+| 06 | The operator view on a laptop: row 578DOWN picked, counters, the corridor map's time slider | each phrase |
+| 07 | The evidence: hits tick, the Miss, the number line, ten of ten struck through, "No field count was possible." | each phrase |
+| 08 | 89% Rough guess, who is missing from the data, the Phase 2 cards | each phrase |
+| 09 | End card: live demo and GitHub links with QR codes, team, credit line | each phrase, then a still hold |
 
 ## Checks
 
 ```bash
-cd video && npm test                                   # timing, mix, captions, forbidden words (node:test)
+cd video && npm test                                   # sync mapping, caption fit, timing, mix, forbidden words, import (node:test)
 venv/bin/python -m pytest video/tests -q               # the numbers file against the validation report (from the repo root)
 npx tsc --noEmit                                       # types
-npm run captions                                       # writes out/captions.srt on its own
-bash scripts/stills.sh 120 900 2400                    # single frames to out/stills/ for a visual check
+npm run captions && npm run sync-table                 # out/captions.srt and out/sync-table.md on their own
+npm run stills -- out/stills auto                      # a frame in every phrase of every scene, for a visual check
 ```
 
 ## Rules the film follows
 
 - The words are the app's words: *Usually seats*, *Usually standing*, *Usually crowded*, *No data*, *Rough guess*, *Based on
   many tickets*, *Fastest*, *Less crowded*, *Leave later*. A level is never shown by colour alone.
-- Captions are burned in at the bottom, at most two lines, from the voice-over script text; the sentence "No field count was
-  possible." is exact.
-- Fonts: the system font, with Noto Sans Devanagari for Hindi (fetched through `@remotion/google-fonts` at render time).
-- Nothing below 32 px; titles stay inside the safe area.
+- Captions are burned in from the voice-over script text; the sentence "No field count was possible." is exact.
+- Nothing below 32 px; everything inside the safe area; nothing overflows its box.

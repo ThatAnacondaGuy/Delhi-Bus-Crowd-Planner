@@ -1,160 +1,171 @@
+// Scene 3: what we have. "Nobody counts..." (phrase 0); three sources arrive on "what is recorded" (1); the ticket counter
+// runs on "two and a half million app tickets" (2); "October 2026" lands on (3); timetable and GPS flow into the match on (4).
 import React from "react";
-import { useVideoConfig } from "remotion";
+import { useCurrentFrame, useVideoConfig } from "remotion";
 import { evolvePath, getLength, getPointAtLength } from "@remotion/paths";
 import N from "../numbers.json";
-import { C, fmt, inOutCubic, lerp, linear, outCubic, prog, springSoft } from "../theme";
-import { Caption, Scene, Sfx, useClock } from "../components/ui";
-import { sceneCaptionSpans } from "../captions";
-import { LEAD_FRAMES } from "../timing";
-import { useAssets } from "../assets";
+import { C, CONTENT, RADIUS, SHADOW, TYPE, clamp01, inOutCubic, lerp, outCubic, prog, springPop, springSoft } from "../design";
+import { Backdrop, Captions, Chapter, Counter, FitText, Kinetic, SceneShell, Sfx, fitLine, useBeats } from "../components/kit";
 
-const STAGES = ["clean", "resolve", "network", "GPS trips", "stretch riders", "alighting", "supply", "scale up", "levels", "operator rank", "validate", "render"];
-const BOX = { x: 580, y: 250, w: 640, h: 560 };
-const SRC = [
-  { y: 290, h: 190, label: "ONDC app tickets", color: C.teal },
-  { y: 520, h: 120, label: "GTFS timetable", color: C.blue },
-  { y: 680, h: 120, label: "GPS feed", color: C.amber },
+const CARD_X = CONTENT.left;
+const CARD_W = 560;
+const PAD = 32;
+const CARDS = [
+  { y: 230, h: 250, title: "ONDC app tickets", sub: "", color: C.tealGlow },
+  { y: 510, h: 150, title: "GTFS timetable", sub: "every scheduled trip", color: C.blueGlow },
+  { y: 690, h: 150, title: "GPS feed", sub: "where buses ran", color: C.amberGlow },
 ];
-const SRC_X = 60;
-const SRC_W = 430;
-const OUT = { x: 1300, y: 420, w: 250, h: 160 };
-const SCREENS = ["commuter", "operator", "live demo"];
+const HUB = { x: 1010, y: 535, r: 120 };
+const OUT = { x: 1300, y: 300, w: 524, h: 470 };
 
-const pathFor = (i: number) => {
-  const y1 = SRC[i].y + SRC[i].h / 2;
-  const y2 = BOX.y + 130 + i * 150;
-  return `M ${SRC_X + SRC_W} ${y1} C ${SRC_X + SRC_W + 40} ${y1}, ${BOX.x - 40} ${y2}, ${BOX.x} ${y2}`;
+const inPath = (i: number) => {
+  const c = CARDS[i];
+  const y1 = c.y + c.h / 2;
+  const y2 = HUB.y + (i - 1) * 60;
+  return `M ${CARD_X + CARD_W + 10} ${y1} C ${CARD_X + CARD_W + 160} ${y1}, ${HUB.x - HUB.r - 140} ${y2}, ${HUB.x - HUB.r + 6} ${y2}`;
 };
-const outPath = (i: number) => {
-  const y2 = 390 + i * 150;
-  return `M ${OUT.x + OUT.w} ${OUT.y + OUT.h / 2} C ${OUT.x + OUT.w + 40} ${OUT.y + OUT.h / 2}, ${1590} ${y2}, ${1640} ${y2}`;
+const OUT_PATH = `M ${HUB.x + HUB.r - 6} ${HUB.y} C ${HUB.x + HUB.r + 60} ${HUB.y}, ${OUT.x - 60} ${OUT.y + OUT.h / 2}, ${OUT.x - 8} ${OUT.y + OUT.h / 2}`;
+
+const Flow: React.FC<{ d: string; at: number; color: string; every?: number; width?: number }> = ({ d, at, color, every = 9, width = 4 }) => {
+  const f = useCurrentFrame();
+  const ev = evolvePath(prog(f, at, 20, inOutCubic), d);
+  const len = getLength(d);
+  const packets: React.ReactNode[] = [];
+  for (let k = 0; k < 40; k++) {
+    const st = at + 14 + k * every;
+    const t = (f - st) / 34;
+    if (t < 0 || t > 1) continue;
+    const p = getPointAtLength(d, t * len);
+    if (!p) continue;
+    packets.push(<circle key={k} cx={p.x} cy={p.y} r={7} fill={color} opacity={Math.min(1, t * 5, (1 - t) * 5)} style={{ filter: `drop-shadow(0 0 6px ${color})` }} />);
+  }
+  return (
+    <g>
+      <path d={d} fill="none" stroke={color} strokeOpacity={0.55} strokeWidth={width} strokeLinecap="round" strokeDasharray={ev.strokeDasharray} strokeDashoffset={ev.strokeDashoffset} />
+      {packets}
+    </g>
+  );
 };
 
 export const Scene03: React.FC = () => {
-  const u = useClock(450);
-  const { fps, durationInFrames: D } = useVideoConfig();
-  const { vo } = useAssets();
+  const f = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { beat } = useBeats();
+  const b0 = beat(0);
+  const b1 = beat(1);
+  const b2 = beat(2);
+  const b3 = beat(3);
+  const b4 = beat(4);
 
-  const titleT = prog(u, 36, 24, inOutCubic);
-  const titleY = lerp(400, 90, titleT);
-  const titleSize = lerp(112, 56, titleT);
-  const dim = lerp(1, 0.25, prog(u, 330, 24, inOutCubic));
-  const push = lerp(1, 1.4, prog(u, 330, 60, inOutCubic));
-  const counter = Math.round(N.tickets * prog(u, 80, 60, outCubic));
-
-  const spans = sceneCaptionSpans(3, { voFrames: vo[2] != null ? Math.round(vo[2]! * 30) : null, duration: D, base: 450, lead: LEAD_FRAMES });
+  // the headline: centred, then up and smaller as the sources arrive
+  const up = springSoft(f, fps, b1 - 8, 26);
+  const headScale = lerp(1, TYPE.h2 / TYPE.h1, up);
+  const headTop = lerp(430, 112, up);
+  const numSize = fitLine(Number(N.tickets).toLocaleString("en-US"), TYPE.stat, CARD_W - 2 * PAD, 800);
+  const oct = springPop(f, fps, b3);
+  const hub = springSoft(f, fps, b4 + 6, 24);
+  const out = springSoft(f, fps, b4 + 30, 24);
 
   return (
-    <Scene fadeIn={0} fadeOut={6}>
-      <div style={{ position: "absolute", inset: 0, transform: `scale(${push})`, transformOrigin: `${BOX.x + BOX.w / 2}px ${BOX.y + BOX.h / 2}px` }}>
-        <div style={{ position: "absolute", left: 0, right: 0, top: titleY, textAlign: "center", fontWeight: 700, fontSize: titleSize, lineHeight: 1.1, color: C.ink, padding: "0 200px" }}>
-          {u < 36 ? (
-            <>
-              {"Nobody counts people".split(" ").map((w, i) => (
-                <span key={i} style={{ display: "inline-block", marginRight: titleSize * 0.26, opacity: prog(u, i * 6, 12, outCubic), transform: `translateY(${(1 - prog(u, i * 6, 12, outCubic)) * 24}px)` }}>{w}</span>
-              ))}
-              <br />
-              {"on Delhi buses".split(" ").map((w, i) => (
-                <span key={i} style={{ display: "inline-block", marginRight: titleSize * 0.26, opacity: prog(u, 18 + i * 6, 12, outCubic), transform: `translateY(${(1 - prog(u, 18 + i * 6, 12, outCubic)) * 24}px)` }}>{w}</span>
-              ))}
-            </>
-          ) : (
-            "Nobody counts people on Delhi buses"
-          )}
-        </div>
-
-        {/* source cards */}
-        {SRC.map((s, i) => {
-          const t = springSoft(u, fps, 60 + i * 12, 20);
-          return (
-            <div key={s.label} style={{ position: "absolute", left: SRC_X, top: s.y, width: SRC_W, height: s.h, borderRadius: 26, background: C.white, border: `5px solid ${s.color}`, boxShadow: "0 12px 30px rgba(13,17,23,0.10)", transform: `translateX(${(1 - t) * -520}px)`, opacity: t * (i === 0 ? 1 : dim), padding: "16px 26px", boxSizing: "border-box" }}>
-              <div style={{ fontSize: 38, fontWeight: 700, color: s.color }}>{s.label}</div>
-              {i === 0 ? (
-                <>
-                  <div style={{ fontSize: 64, fontWeight: 700, color: C.ink, fontVariantNumeric: "tabular-nums", lineHeight: 1.15 }}>{fmt(counter)}</div>
-                  <div style={{ fontSize: 36, color: C.grey }}>October 2026</div>
-                </>
-              ) : (
-                <div style={{ fontSize: 34, color: C.grey, marginTop: 8 }}>{i === 1 ? "scheduled trips" : "where buses ran"}</div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* arrows and packets */}
-        <svg width={1920} height={1080} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
-          {SRC.map((s, i) => {
-            const d = pathFor(i);
-            const ev = evolvePath(prog(u, 150 + i * 8, 24, inOutCubic), d);
-            const len = getLength(d);
-            const packets = [] as React.ReactNode[];
-            for (let k = 0; k < 8; k++) {
-              const start = 190 + i * 6 + k * 18;
-              const t = (u - start) / 60;
-              if (t < 0 || t > 1) continue;
-              const p = getPointAtLength(d, linear(t) * len);
-              if (!p) continue;
-              packets.push(<circle key={k} cx={p.x} cy={p.y} r={7} fill={C.teal} opacity={Math.min(1, t * 6, (1 - t) * 6)} />);
-            }
-            return (
-              <g key={i} opacity={i === 0 ? 1 : dim}>
-                <path d={d} fill="none" stroke={s.color} strokeWidth={5} strokeLinecap="round" strokeDasharray={ev.strokeDasharray} strokeDashoffset={ev.strokeDashoffset} />
-                {packets}
-              </g>
-            );
-          })}
-          {SCREENS.map((_, i) => {
-            const d = outPath(i);
-            const ev = evolvePath(prog(u, 262 + i * 8, 24, inOutCubic), d);
-            const len = getLength(d);
-            const packets = [] as React.ReactNode[];
-            for (let k = 0; k < 4; k++) {
-              const start = 296 + i * 6 + k * 18;
-              const t = (u - start) / 36;
-              if (t < 0 || t > 1) continue;
-              const p = getPointAtLength(d, t * len);
-              if (!p) continue;
-              packets.push(<circle key={k} cx={p.x} cy={p.y} r={7} fill={C.teal} opacity={Math.min(1, t * 6, (1 - t) * 6)} />);
-            }
-            return (
-              <g key={i} opacity={dim}>
-                <path d={d} fill="none" stroke={C.grey} strokeWidth={4} strokeLinecap="round" strokeDasharray={ev.strokeDasharray} strokeDashoffset={ev.strokeDashoffset} />
-                {packets}
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* pipeline lane */}
-        <div style={{ position: "absolute", left: BOX.x, top: BOX.y, width: BOX.w, height: BOX.h, borderRadius: 34, background: C.white, border: `5px solid ${C.blue}`, boxShadow: "0 18px 50px rgba(13,17,23,0.12)", opacity: prog(u, 120, 20, outCubic), padding: 22, boxSizing: "border-box" }}>
-          <div style={{ fontSize: 38, fontWeight: 700, color: C.blue, marginBottom: 12 }}>The pipeline</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {STAGES.map((s, i) => {
-              const on = prog(u, 196 + i * 8, 12, outCubic);
-              return (
-                <div key={s} style={{ height: 62, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, fontWeight: 700, color: on > 0.5 ? C.white : C.grey, background: on > 0 ? `color-mix(in srgb, ${C.teal} ${Math.round(on * 100)}%, ${C.paperDeep})` : C.paperDeep, boxShadow: on > 0 ? `0 0 ${24 * on}px ${C.teal}66` : "none", opacity: i < 1 ? 1 : lerp(1, dim, prog(u, 330, 24)) }}>
-                  {s}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* planner and the three screens */}
-        <div style={{ position: "absolute", left: OUT.x, top: OUT.y, width: OUT.w, height: OUT.h, borderRadius: 26, background: C.blue, color: C.paper, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: 40, fontWeight: 700, lineHeight: 1.15, padding: 18, opacity: prog(u, 250, 18, outCubic) * dim, boxSizing: "border-box" }}>Planner and API</div>
-        {SCREENS.map((s, i) => {
-          const t = springSoft(u, fps, 288 + i * 10, 20);
-          return (
-            <div key={s} style={{ position: "absolute", left: 1640, top: 345 + i * 150, width: 250, height: 90, borderRadius: 18, background: C.white, border: `4px solid ${C.blue}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, fontWeight: 700, color: C.blue, opacity: t * dim, transform: `scale(${0.7 + 0.3 * t})` }}>
-              {s}
-            </div>
-          );
-        })}
+    <SceneShell>
+      <Backdrop tint={[C.teal, C.blue, "#2b2350"]} />
+      <Chapter n="01" text="The data" />
+      <div style={{ position: "absolute", left: CONTENT.left, top: headTop, width: CONTENT.width, transform: `scale(${headScale})`, transformOrigin: "50% 0" }}>
+        <Kinetic text="Nobody counts people on Delhi buses." at={b0 - 4} size={TYPE.h1} width={CONTENT.width} maxLines={1} stagger={4} align="center" accent={{ nobody: C.amberGlow }} />
       </div>
-      <Caption spans={spans} bottom={30} />
-      {SRC.map((_, i) => (
-        <Sfx key={i} name="pop" at={64 + i * 12} volume={0.35} />
-      ))}
-    </Scene>
+
+      {/* sources */}
+      {CARDS.map((c, i) => {
+        const t = springSoft(f, fps, b1 + i * 7, 22);
+        const lit = i === 0 ? 1 : lerp(0.55, 1, prog(f, b4, 14));
+        return (
+          <div
+            key={c.title}
+            style={{
+              position: "absolute",
+              left: CARD_X,
+              top: c.y,
+              width: CARD_W,
+              height: c.h,
+              padding: `24px ${PAD}px`,
+              boxSizing: "border-box",
+              borderRadius: RADIUS.lg,
+              background: "linear-gradient(160deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))",
+              border: `2px solid ${c.color}55`,
+              boxShadow: SHADOW.card,
+              transform: `translateX(${(1 - t) * -120}px)`,
+              opacity: t * lit,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ width: 14, height: 14, borderRadius: 7, background: c.color, boxShadow: `0 0 14px ${c.color}` }} />
+              <FitText text={c.title} size={TYPE.body} width={CARD_W - 2 * PAD - 28} color={C.text} />
+            </div>
+            {i === 0 ? (
+              <>
+                <Counter value={N.tickets} at={b2} dur={46} size={numSize} color={C.text} style={{ marginTop: 14 }} />
+                <div style={{ display: "inline-block", marginTop: 14, padding: "6px 18px", borderRadius: RADIUS.pill, background: `${C.tealGlow}22`, border: `2px solid ${C.tealGlow}88`, color: C.tealGlow, fontSize: TYPE.label, fontWeight: 700, transform: `scale(${0.5 + 0.5 * oct})`, transformOrigin: "left center", opacity: clamp01(oct * 2) }}>
+                  October 2026
+                </div>
+              </>
+            ) : (
+              <FitText text={c.sub} size={TYPE.label} width={CARD_W - 2 * PAD} weight={500} color={C.textDim} style={{ marginTop: 14 }} />
+            )}
+          </div>
+        );
+      })}
+
+      <svg width={1920} height={1080} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+        <Flow d={inPath(0)} at={b2 + 4} color={C.tealGlow} />
+        <Flow d={inPath(1)} at={b4} color={C.blueGlow} every={12} />
+        <Flow d={inPath(2)} at={b4 + 6} color={C.amberGlow} every={12} />
+        <Flow d={OUT_PATH} at={b4 + 26} color={C.tealGlow} every={7} width={5} />
+      </svg>
+
+      {/* the match */}
+      <div
+        style={{
+          position: "absolute",
+          left: HUB.x - HUB.r,
+          top: HUB.y - HUB.r,
+          width: 2 * HUB.r,
+          height: 2 * HUB.r,
+          borderRadius: "50%",
+          background: `radial-gradient(circle at 35% 30%, ${C.blue}, #0c1a33)`,
+          border: `3px solid ${C.blueGlow}`,
+          boxShadow: `0 0 ${60 * hub}px ${C.blueGlow}88, ${SHADOW.card}`,
+          transform: `scale(${0.6 + 0.4 * hub})`,
+          opacity: clamp01(hub * 1.4),
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <FitText text="Matched" size={TYPE.body} width={2 * HUB.r - 40} align="center" color={C.text} />
+      </div>
+
+      {/* out: every stretch of every trip, every half hour */}
+      <div style={{ position: "absolute", left: OUT.x, top: OUT.y, width: OUT.w, height: OUT.h, padding: 28, boxSizing: "border-box", borderRadius: RADIUS.lg, background: "rgba(255,255,255,0.06)", border: "2px solid rgba(255,255,255,0.12)", boxShadow: SHADOW.card, opacity: out, transform: `translateY(${(1 - out) * 30}px)` }}>
+        <FitText text="Every stretch, every half hour" size={TYPE.body} width={OUT.w - 56} maxLines={2} color={C.text} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: 6, marginTop: 22 }}>
+          {Array.from({ length: 84 }, (_, k) => {
+            const col = k % 12;
+            const row = Math.floor(k / 12);
+            const v = Math.sin(col * 0.55 + row * 0.9) + Math.sin(col * 0.21 - row * 0.4) + (col > 3 && col < 8 ? 0.8 : 0);
+            const lv = v > 1.2 ? C.red : v > 0.2 ? C.amber : C.teal;
+            const on = prog(f, b4 + 34 + col * 2 + row * 3, 8);
+            return <div key={k} style={{ height: 30, borderRadius: 6, background: on > 0 ? lv : "rgba(255,255,255,0.08)", opacity: lerp(0.35, 1, on) }} />;
+          })}
+        </div>
+      </div>
+
+      <Captions />
+      <Sfx name="pop" at={b1} volume={0.35} />
+      <Sfx name="pop" at={b1 + 7} volume={0.3} />
+      <Sfx name="pop" at={b1 + 14} volume={0.3} />
+      <Sfx name="tap" at={b3} volume={0.35} />
+      <Sfx name="chime" at={b4 + 8} volume={0.45} />
+      <div style={{ display: "none" }}>{outCubic(0)}</div>
+    </SceneShell>
   );
 };
