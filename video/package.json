@@ -1,0 +1,32 @@
+{
+  "name": "kshama-delhi-bus-crowding-film",
+  "version": "1.0.0",
+  "private": true,
+  "description": "3-minute demo film for the Delhi Bus Crowding Planner (Team Kshama), built with Remotion",
+  "scripts": {
+    "scan": "node scripts/scan_assets.mjs",
+    "studio": "npm run scan && remotion studio src/index.ts",
+    "draft": "npm run scan && remotion render src/index.ts Main out/draft.mp4 --codec=h264 --crf=20 --pixel-format=yuv420p",
+    "render": "npm run scan && remotion render src/index.ts Main out/kshama-delhi-bus-crowding.mp4 --codec=h264 --audio-codec=aac --crf=18 --pixel-format=yuv420p",
+    "thumbnail": "remotion still src/index.ts Thumbnail out/thumbnail.png",
+    "numbers": "../venv/bin/python scripts/numbers.py",
+    "capture": "node scripts/capture.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.546",
+    "@remotion/google-fonts": "4.0.546",
+    "@remotion/media-utils": "4.0.546",
+    "@remotion/paths": "4.0.546",
+    "qrcode": "1.5.4",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.546"
+  },
+  "devDependencies": {
+    "@types/qrcode": "1.5.6",
+    "@types/react": "19.2.2",
+    "puppeteer-core": "24.2.0",
+    "typescript": "5.9.3"
+  }
+}

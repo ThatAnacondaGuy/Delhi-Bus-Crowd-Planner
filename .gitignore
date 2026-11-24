@@ -73,3 +73,14 @@ data/gps_aggregates/**/*.geojson
 data/gps_aggregates/**/*.7z
 data/gps_aggregates/**/*.db
 data/gps_aggregates/**/*.duckdb
+
+# Demo film (video/): dependencies, renders and user-supplied media are never committed
+video/node_modules/
+video/out/
+video/public/vo/
+video/public/music*
+video/public/sfx/
+video/public/clips/
+video/public/captures/
+video/public/assets.json
+video/extra resources/
