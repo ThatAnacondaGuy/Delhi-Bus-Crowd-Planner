@@ -15,7 +15,7 @@ This is a check of the model against things we can compare it with. No field cou
 - Scheduled DTC bus-km is 2.29 times the published figure (implied share of trips run about 0.44 if the published figure is right). The model applies the share of trips that ran, measured from GPS, which is 0.43 bus-km weighted for DTC. The model figure counts each scheduled trip's segments once, on the feed's single service day, the same per-day basis as the published figure.
 - Routes whose last stretches depend on the alighting correction: 662.
 - Coverage: 93.6% of scheduled bus-km has a commuter-facing level, 4.7% rests on many tickets.
-- GPS layer: in: bus supply is scheduled buses times the share that ran (GPS, ten sample days); the stop-time corroboration is not built and is not counted as a miss.
+- GPS layer: used. Bus supply is scheduled buses times the share that ran (GPS, ten sample days); the stop-time corroboration is not built and is not counted as a miss.
 - Run time of the validation stage: 158 s.
 
 ## A. Gates (a failure stops the run)
@@ -100,7 +100,7 @@ Coverage of the sampling ranges: a week held out lands inside the range estimate
 
 ## D. Independent checks
 
-No field count was possible. The checks are published totals, the researched corridors above and, once the GPS layer is in, GPS stop-time activity.
+No field count was possible. The checks are published totals and the researched corridors above; a GPS stop-time check is not built.
 
 | Check | Model | Published | Band | Result |
 |---|---|---|---|---|

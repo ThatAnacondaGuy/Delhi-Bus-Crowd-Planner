@@ -57,6 +57,11 @@ data/processed/*
 !data/processed/*.json
 !data/processed/*.md
 !data/processed/*.csv
+# local-only outputs: absolute paths in the hash cache, 4 MB pipeline CSV
+data/processed/manifest.json
+data/processed/route_hour_summary.csv
+# installers dropped in the repo root
+*.dmg
 !data/gps_aggregates/**
 !tests/fixtures/**
 

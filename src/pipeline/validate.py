@@ -1259,7 +1259,7 @@ def render_md(rep: dict) -> str:
     a(f"- Routes whose last stretches depend on the alighting correction: {h['alighting_sensitive_routes']}.")
     a(f"- Coverage: {_pct(h['bus_km_share_commuter_facing'])} of scheduled bus-km has a commuter-facing level, "
       f"{_pct(h['bus_km_share_many_tickets'])} rests on many tickets.")
-    a("- GPS layer: " + ("in: bus supply is scheduled buses times the share that ran (GPS, ten sample days); the "
+    a("- GPS layer: " + ("used. Bus supply is scheduled buses times the share that ran (GPS, ten sample days); the "
                         "stop-time corroboration is not built and is not counted as a miss."
                         if h["gps_available"] else
                         "not available, so bus supply uses the schedule (rho = 1) and the GPS checks are marked not "
@@ -1335,8 +1335,8 @@ def render_md(rep: dict) -> str:
       f"reported as is.\n")
 
     a("## D. Independent checks\n")
-    a("No field count was possible. The checks are published totals, the researched corridors above and, once the "
-      "GPS layer is in, GPS stop-time activity.\n")
+    a("No field count was possible. The checks are published totals and the researched corridors above; a GPS "
+      "stop-time check is not built.\n")
     bk, lf = ind["dtc_bus_km"], ind["load_factor"]
     a(_tbl(["Check", "Model", "Published", "Band", "Result"], [
         ("DTC bus-km per day (scheduled x rho)", _num(bk["model"], 0), _num(bk["published"], 0),
