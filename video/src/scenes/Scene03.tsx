@@ -4,7 +4,7 @@ import { evolvePath, getLength, getPointAtLength } from "@remotion/paths";
 import N from "../numbers.json";
 import { C, fmt, inOutCubic, lerp, linear, outCubic, prog, springSoft } from "../theme";
 import { Caption, Scene, Sfx, useClock } from "../components/ui";
-import { SCENE_CAPTIONS, sceneSpans } from "../captions";
+import { sceneCaptionSpans } from "../captions";
 import { LEAD_FRAMES } from "../timing";
 import { useAssets } from "../assets";
 
@@ -42,7 +42,7 @@ export const Scene03: React.FC = () => {
   const push = lerp(1, 1.4, prog(u, 330, 60, inOutCubic));
   const counter = Math.round(N.tickets * prog(u, 80, 60, outCubic));
 
-  const spans = sceneSpans(3, SCENE_CAPTIONS[2], vo[2] != null ? Math.round(vo[2]! * 30) : null, 450, D, LEAD_FRAMES);
+  const spans = sceneCaptionSpans(3, { voFrames: vo[2] != null ? Math.round(vo[2]! * 30) : null, duration: D, base: 450, lead: LEAD_FRAMES });
 
   return (
     <Scene fadeIn={0} fadeOut={6}>
@@ -153,7 +153,7 @@ export const Scene03: React.FC = () => {
       </div>
       <Caption spans={spans} bottom={30} />
       {SRC.map((_, i) => (
-        <Sfx key={i} name="pop" at={64 + i * 12} volume={0.25} />
+        <Sfx key={i} name="pop" at={64 + i * 12} volume={0.35} />
       ))}
     </Scene>
   );

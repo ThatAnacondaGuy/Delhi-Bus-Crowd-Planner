@@ -7,11 +7,14 @@
     "scan": "node scripts/scan_assets.mjs",
     "studio": "npm run scan && remotion studio src/index.ts",
     "draft": "npm run scan && remotion render src/index.ts Main out/draft.mp4 --codec=h264 --crf=20 --pixel-format=yuv420p",
-    "render": "npm run scan && remotion render src/index.ts Main out/kshama-delhi-bus-crowding.mp4 --codec=h264 --audio-codec=aac --crf=18 --pixel-format=yuv420p",
+    "render": "bash scripts/render.sh out/kshama-delhi-bus-crowding.mp4",
     "thumbnail": "remotion still src/index.ts Thumbnail out/thumbnail.png",
     "numbers": "../venv/bin/python scripts/numbers.py",
     "capture": "node scripts/capture.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "near-final": "bash scripts/render.sh out/near-final.mp4",
+    "captions": "node --no-warnings scripts/captions_srt.mjs",
+    "master": "bash scripts/master.sh"
   },
   "dependencies": {
     "@remotion/cli": "4.0.546",

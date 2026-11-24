@@ -7,6 +7,8 @@ export const MIN_TOTAL = 170 * FPS; // 2:50
 export const MAX_TOTAL = 190 * FPS; // 3:10
 /** A scene never ends on the last word: the clean voice file is followed by 0.6 s of room. */
 export const TAIL_FRAMES = Math.round(0.6 * FPS);
+/** The end card keeps 2.5 s after the last voice line, so the music's 2.5 s fade-out starts where the voice ends. */
+export const LAST_TAIL_FRAMES = Math.round(2.5 * FPS);
 /** prep_audio.sh trims the lead-in to about 0.3 s. */
 export const LEAD_FRAMES = Math.round(0.3 * FPS);
 
@@ -26,7 +28,7 @@ export function planScenes(voSeconds: (number | null)[]): ScenePlan {
   const warnings: string[] = [];
   const need = BASE_FRAMES.map((_, i) => {
     const v = voSeconds[i];
-    return v == null || !(v > 0) ? 0 : Math.ceil(v * FPS) + TAIL_FRAMES;
+    return v == null || !(v > 0) ? 0 : Math.ceil(v * FPS) + (i === BASE_FRAMES.length - 1 ? LAST_TAIL_FRAMES : TAIL_FRAMES);
   });
   const durations = BASE_FRAMES.map((b, i) => Math.max(b, need[i]));
   let total = durations.reduce((a, b) => a + b, 0);
@@ -82,28 +84,42 @@ export function shotStarts(duration: number, partStartsSeconds: number[] | null)
   return out;
 }
 
-/** [startFrame, endFrame] of speech per scene that has a voice file (global frames). */
-export function speechWindows(starts: number[], voSeconds: (number | null)[]): [number, number][] {
-  const w: [number, number][] = [];
+/** A speech window: [startFrame, endFrame, depth]. depth 1 (default) is the full -18 dB duck; less is a shallower duck. */
+export type Window = [number, number, number?];
+
+/** How deep the music is ducked in a scene whose voice file is not there yet while the others have one (about -8 dB). */
+export const PLACEHOLDER_DEPTH = 0.69;
+
+/**
+ * Windows where the music is ducked, per scene that has a voice file (global frames). When at least one scene has a voice
+ * and another does not (scene 5 before its recording arrives), that scene gets a shallower duck so the film is not dead.
+ * With no voice at all (the silent draft) nothing is ducked.
+ */
+export function speechWindows(starts: number[], voSeconds: (number | null)[], durations?: number[]): Window[] {
+  const w: Window[] = [];
+  const any = voSeconds.some((v) => v != null && v > 0);
   voSeconds.forEach((v, i) => {
     if (v != null && v > 0) w.push([starts[i], starts[i] + Math.round(v * FPS)]);
+    else if (any && durations) w.push([starts[i] + LEAD_FRAMES, starts[i] + durations[i] - TAIL_FRAMES, PLACEHOLDER_DEPTH]);
   });
   return w;
 }
 
-export const MUSIC_BASE = 0.55; // full level in the gaps
+export const MUSIC_BASE = 0.9; // full level in the gaps (tracks are first trimmed to a common loudness)
+export const MUSIC_TARGET_LUFS = -18;
 export const DUCK_DB = -18;
 const DUCK = Math.pow(10, DUCK_DB / 20);
 export const RAMP = 12;
 
 /** Music volume at a frame: ducked about 18 dB while speech plays, back to full over 12 frames, fade in 1.5 s, out 2.5 s. */
-export function musicGain(frame: number, windows: [number, number][], total: number): number {
+export function musicGain(frame: number, windows: Window[], total: number): number {
   let duck = 0; // 0 = full, 1 = fully ducked
-  for (const [a, b] of windows) {
+  for (const [a, b, depth = 1] of windows) {
     let d: number;
     if (frame >= a && frame <= b) d = 1;
     else if (frame < a) d = Math.max(0, 1 - (a - frame) / RAMP);
     else d = Math.max(0, 1 - (frame - b) / RAMP);
+    d *= depth;
     if (d > duck) duck = d;
   }
   const level = MUSIC_BASE * (1 - duck * (1 - DUCK));
@@ -112,12 +128,36 @@ export function musicGain(frame: number, windows: [number, number][], total: num
   return level * Math.min(fadeIn, fadeOut);
 }
 
-export type SfxKey = "ambience" | "whoosh" | "tap" | "pop" | "chime" | "riser" | "map-swoosh" | "city-ambience" | "air-brake" | "horn" | "engine";
+/** The two music tracks cross over during 4 s, centred on the scene boundary closest to 1:55. */
+export const XFADE_FRAMES = 4 * FPS;
+export const XFADE_TARGET = 115 * FPS;
+
+/** First frame of the crossfade: centred on the scene start nearest the target; track A (aFrames long) must still sound at its end. */
+export function pickCrossfade(starts: number[], target: number, aFrames: number): number {
+  const ok = starts.slice(1).filter((b) => b + XFADE_FRAMES / 2 <= aFrames);
+  if (ok.length === 0) return Math.max(0, aFrames - XFADE_FRAMES);
+  const best = ok.reduce((m, b) => (Math.abs(b - target) < Math.abs(m - target) ? b : m), ok[0]);
+  return best - XFADE_FRAMES / 2;
+}
+
+/** Gain of each music track at a frame: the ducked and faded envelope, split by an equal-power (cos/sin) crossfade starting at xs. */
+export function trackGains(frame: number, windows: Window[], total: number, xs: number | null, tracks: number): number[] {
+  const base = musicGain(frame, windows, total);
+  if (tracks < 2 || xs == null) return [base];
+  const t = Math.min(1, Math.max(0, (frame - xs) / XFADE_FRAMES));
+  const a = t >= 1 ? 0 : Math.cos((t * Math.PI) / 2);
+  const b = t <= 0 ? 0 : Math.sin((t * Math.PI) / 2);
+  return [base * a, base * b];
+}
+
+export type SfxKey = "swoop" | "ambience" | "whoosh" | "tap" | "pop" | "chime" | "riser" | "map-swoosh" | "city-ambience" | "air-brake" | "horn" | "engine";
 
 const SYNONYMS: Record<string, string[]> = {
-  ambience: ["ambien", "city", "street", "traffic"],
-  "city-ambience": ["ambien", "city", "street", "traffic"],
+  ambience: ["road", "ambien", "city", "street", "traffic"],
+  "city-ambience": ["city amb", "ambien", "city", "street", "traffic"],
   whoosh: ["whoosh", "swoosh", "swish"],
+  swoop: ["swoop", "swoosh", "whoosh"],
+  ding: ["ding", "chime", "bell"],
   tap: ["tap", "click", "tick"],
   pop: ["pop", "blip"],
   chime: ["chime", "bell", "ding"],

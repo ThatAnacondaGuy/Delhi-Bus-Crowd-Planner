@@ -3,7 +3,7 @@ import { AbsoluteFill, OffthreadVideo, staticFile, useCurrentFrame, useVideoConf
 import { C, FONT, inOutCubic, lerp, outCubic, prog } from "../theme";
 import { Caption, Sfx, Words } from "../components/ui";
 import { Person } from "../components/Person";
-import { SCENE_CAPTIONS, chunkSpans } from "../captions";
+import { sceneCaptionSpans } from "../captions";
 import { LEAD_FRAMES } from "../timing";
 import { useAssets } from "../assets";
 
@@ -81,8 +81,7 @@ export const Scene01: React.FC = () => {
   const dimOthers = lerp(1, 0.3, prog(u, 225, 18));
   const blackout = prog(u, 294, 6);
 
-  const speechEnd = vo[0] != null ? Math.round(vo[0]! * 30) : 240;
-  const spans = chunkSpans(SCENE_CAPTIONS[0], LEAD_FRAMES + 12, Math.max(speechEnd, 160));
+  const spans = sceneCaptionSpans(1, { voFrames: vo[0] != null ? Math.round(vo[0]! * 30) : null, duration: D, base: 300, lead: LEAD_FRAMES });
 
   return (
     <AbsoluteFill style={{ background: "#0d1117", fontFamily: FONT }}>
@@ -156,11 +155,12 @@ export const Scene01: React.FC = () => {
       </div>
       <Caption spans={spans} bottom={44} />
       <AbsoluteFill style={{ background: "#000", opacity: blackout }} />
-      <Sfx name="ambience" at={0} volume={0.35} len={D} />
-      <Sfx name="horn" at={96} volume={0.18} len={45} />
-      <Sfx name="engine" at={112} volume={0.2} len={110} />
-      <Sfx name="air-brake" at={140} volume={0.4} len={60} />
-      <Sfx name="pop" at={226} volume={0.3} />
+      <Sfx name="ambience" at={0} volume={0.5} len={D} fade={30} />
+      <Sfx name="city-ambience" at={0} volume={0.3} len={D} fade={45} />
+      <Sfx name="horn" at={96} volume={0.5} len={45} />
+      <Sfx name="engine" at={112} volume={0.4} len={110} fade={12} />
+      <Sfx name="air-brake" at={140} volume={1} len={60} fade={12} />
+      <Sfx name="pop" at={226} volume={0.5} />
       <div style={{ display: "none" }}>{INK}</div>
     </AbsoluteFill>
   );

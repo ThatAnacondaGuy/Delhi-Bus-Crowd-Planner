@@ -3,7 +3,7 @@ import { useVideoConfig } from "remotion";
 import N from "../numbers.json";
 import { C, fmt, inOutCubic, lerp, outCubic, prog, springSoft } from "../theme";
 import { Caption, Scene, Sfx, useClock } from "../components/ui";
-import { SCENE_CAPTIONS, sceneSpans } from "../captions";
+import { sceneCaptionSpans } from "../captions";
 import { LEAD_FRAMES } from "../timing";
 import { useAssets } from "../assets";
 
@@ -82,7 +82,7 @@ export const Scene07: React.FC = () => {
   const missRow = prog(u, 420, 12);
   const missWord = springSoft(u, fps, 446, 18);
 
-  const spans = sceneSpans(7, SCENE_CAPTIONS[6], vo[6] != null ? Math.round(vo[6]! * 30) : null, 900, D, LEAD_FRAMES);
+  const spans = sceneCaptionSpans(7, { voFrames: vo[6] != null ? Math.round(vo[6]! * 30) : null, duration: D, base: 900, lead: LEAD_FRAMES });
 
   const hits: { at: number; text: React.ReactNode }[] = [
     { at: 120, text: `Peaks ${N.peaks[0]} and ${N.peaks[1]}` },
@@ -112,11 +112,11 @@ export const Scene07: React.FC = () => {
           {hits.map((h, i) => (
             <Row key={i} u={u} y={i * 66} h={58} appear={60 + i * 12} fillAt={h.at} text={h.text} dim={dimHits} />
           ))}
-          <Sfx name="tap" at={120} volume={0.25} />
-          <Sfx name="tap" at={165} volume={0.25} />
-          <Sfx name="tap" at={210} volume={0.25} />
-          <Sfx name="tap" at={255} volume={0.25} />
-          <Sfx name="tap" at={300} volume={0.25} />
+          <Sfx name="tap" at={120} volume={0.4} />
+          <Sfx name="tap" at={165} volume={0.4} />
+          <Sfx name="tap" at={210} volume={0.4} />
+          <Sfx name="tap" at={255} volume={0.4} />
+          <Sfx name="tap" at={300} volume={0.4} />
 
           {/* the miss */}
           <div style={{ position: "absolute", left: 0, top: 346, width: "100%", opacity: missRow }}>
@@ -192,7 +192,7 @@ export const Scene07: React.FC = () => {
 
       <div style={{ position: "absolute", left: 0, right: 0, top: 400, textAlign: "center", fontSize: 84, fontWeight: 700, color: C.paper, opacity: closing, transform: `translateY(${(1 - closing) * 20}px)`, textShadow: "0 4px 30px rgba(0,0,0,0.6)" }}>No field count was possible.</div>
       <Caption spans={spans} bottom={30} />
-      <Sfx name="pop" at={448} volume={0.25} />
+      <Sfx name="pop" at={448} volume={0.5} />
     </Scene>
   );
 };

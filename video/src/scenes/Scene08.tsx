@@ -3,7 +3,7 @@ import { useCurrentFrame, useVideoConfig } from "remotion";
 import N from "../numbers.json";
 import { C, inOutCubic, lerp, outCubic, prog, springSoft } from "../theme";
 import { Caption, Scene, Sfx, useClock } from "../components/ui";
-import { SCENE_CAPTIONS, sceneSpans } from "../captions";
+import { sceneCaptionSpans } from "../captions";
 import { LEAD_FRAMES } from "../timing";
 import { useAssets } from "../assets";
 
@@ -30,7 +30,7 @@ export const Scene08: React.FC = () => {
   const barY = lerp(400, 170, slide);
   const barOpacity = lerp(1, 0.28, slide);
   const out = 1 - prog(u, 378, 12);
-  const spans = sceneSpans(8, SCENE_CAPTIONS[7], vo[7] != null ? Math.round(vo[7]! * 30) : null, 390, D, LEAD_FRAMES);
+  const spans = sceneCaptionSpans(8, { voFrames: vo[7] != null ? Math.round(vo[7]! * 30) : null, duration: D, base: 390, lead: LEAD_FRAMES });
   void f;
   return (
     <Scene fadeIn={0} fadeOut={0}>
@@ -68,8 +68,8 @@ export const Scene08: React.FC = () => {
         </div>
       </div>
       <Caption spans={spans} bottom={30} />
-      <Sfx name="riser" at={150} volume={0.25} />
-      <Sfx name="pop" at={176} volume={0.25} />
+      <Sfx name="riser" at={0} volume={0.4} />
+      <Sfx name="pop" at={176} volume={0.5} />
     </Scene>
   );
 };

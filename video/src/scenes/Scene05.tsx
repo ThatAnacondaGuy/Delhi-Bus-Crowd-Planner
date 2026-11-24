@@ -4,7 +4,7 @@ import N from "../numbers.json";
 import { C, Level, LEVELS, clamp01, inOutCubic, lerp, outCubic, prog } from "../theme";
 import { Cam, Caption, Chip, Cursor, DrawBox, FadeIn, Phone, Scene, Sfx, Shot, Spot, TapRing, World } from "../components/ui";
 import { R, capMeta, capUrl, cards, cx, cy } from "../captures";
-import { PLANNER_PARTS, chunkSpans } from "../captions";
+import { sceneCaptionSpans } from "../captions";
 import { LEAD_FRAMES, TAIL_FRAMES, shotStarts } from "../timing";
 import { useAssets } from "../assets";
 import { WHY } from "../layout";
@@ -125,7 +125,7 @@ const S5a: React.FC = () => {
           <Chip level="seats" size={84} style={{ marginTop: 14 }} />
         </Between>
       </Col>
-      <Sfx name="chime" at={236} volume={0.45} />
+      <Sfx name="chime" at={236} volume={0.9} />
     </>
   );
 };
@@ -171,7 +171,7 @@ const S5b: React.FC = () => {
         </Between>
       </Col>
       <Sfx name="tap" at={30} />
-      <Sfx name="chime" at={64} volume={0.3} />
+      <Sfx name="chime" at={64} volume={0.9} />
     </>
   );
 };
@@ -287,7 +287,7 @@ const S5d: React.FC = () => {
           <Chip level="standing" size={84} style={{ marginTop: 14 }} />
         </Between>
       </Col>
-      <Sfx name="chime" at={206} volume={0.3} />
+      <Sfx name="ding" at={206} volume={0.5} />
     </>
   );
 };
@@ -372,7 +372,7 @@ const S5e: React.FC = () => {
         </Between>
       </Col>
       <Sfx name="tap" at={26} />
-      <Sfx name="pop" at={248} volume={0.35} />
+      <Sfx name="pop" at={248} volume={0.5} />
     </>
   );
 };
@@ -399,8 +399,7 @@ export const Scene05: React.FC = () => {
   const stage: Stage = { x, y, scale };
 
   // captions: each part's text is spread over its own span of the voice
-  const speechEnd = (i: number) => Math.max(starts[i] + 60, ends[i] - (vo[4] != null ? TAIL_FRAMES / 2 : 6));
-  const spans = PLANNER_PARTS.flatMap((chunks, i) => chunkSpans(chunks, starts[i] + LEAD_FRAMES + 6, speechEnd(i)));
+  const spans = sceneCaptionSpans(5, { voFrames: vo[4] != null ? Math.round(vo[4]! * 30) : null, duration: D, base: 1440, lead: LEAD_FRAMES, tail: TAIL_FRAMES, partStarts: starts });
   return (
     <Scene>
       <StageCtx.Provider value={stage}>

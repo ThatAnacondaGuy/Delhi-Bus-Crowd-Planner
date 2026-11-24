@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   BASE_FRAMES, FPS, MIN_TOTAL, MAX_TOTAL, TAIL_FRAMES,
   planScenes, shotStarts, musicGain, speechWindows, matchSfx,
+  LAST_TAIL_FRAMES, XFADE_FRAMES, XFADE_TARGET, pickCrossfade, trackGains, LEAD_FRAMES,
 } from "../src/timing.ts";
 
 const none = Array(9).fill(null);
@@ -99,4 +100,62 @@ test("scene 1 cues find the user's bus sounds, with a whoosh as the fallback for
   assert.equal(matchSfx(files, "engine"), "busengine idling.mp3");
   assert.equal(matchSfx(["swoosh.mp3"], "air-brake"), "swoosh.mp3");
   assert.equal(matchSfx(["a.mp3"], "horn"), null);
+});
+
+test("the end card keeps 2.5 s after the last voice line so the music can fade out fully", () => {
+  const vo = [...none];
+  vo[8] = 8.5;
+  const p = planScenes(vo);
+  assert.equal(LAST_TAIL_FRAMES, 75);
+  assert.equal(p.durations[8], Math.ceil(8.5 * FPS) + LAST_TAIL_FRAMES);
+  // the fade-out (last 2.5 s of the film) starts exactly where the voice ends
+  const w = speechWindows(p.starts, vo);
+  assert.equal(p.total - w[0][1], LAST_TAIL_FRAMES);
+});
+
+test("music crossfade: the scene boundary closest to 1:55, centred, 4 s long", () => {
+  assert.equal(XFADE_FRAMES, 120);
+  assert.equal(XFADE_TARGET, 115 * FPS);
+  const starts = [0, 300, 574, 1028, 1748, 3188, 3893, 4793, 5183];
+  const xs = pickCrossfade(starts, XFADE_TARGET, 122 * FPS);
+  assert.equal(xs, 3188 - XFADE_FRAMES / 2);
+  // a later film (long scene 5 voice) moves the boundary but it stays the nearest one
+  const later = [0, 300, 574, 1028, 1748, 3500, 4205, 5105, 5495];
+  assert.equal(pickCrossfade(later, XFADE_TARGET, 122 * FPS), 3500 - XFADE_FRAMES / 2);
+  // track A must still be playing when the crossfade ends
+  const xs2 = pickCrossfade([0, 300, 3600, 3900], XFADE_TARGET, 3700);
+  assert.ok(xs2 + XFADE_FRAMES <= 3700, `xs ${xs2}`);
+});
+
+test("equal-power crossfade between the two tracks", () => {
+  const win = [];
+  const xs = 3128;
+  const g = (f) => trackGains(f, win, 5460, xs, 2);
+  assert.equal(g(xs - 1)[1], 0);
+  assert.ok(g(xs - 1)[0] > 0);
+  assert.equal(g(xs + XFADE_FRAMES + 1)[0], 0);
+  const mid = g(xs + XFADE_FRAMES / 2);
+  const base = musicGain(xs + XFADE_FRAMES / 2, win, 5460);
+  assert.ok(Math.abs(mid[0] ** 2 + mid[1] ** 2 - base ** 2) < 1e-9, "constant power");
+  assert.ok(Math.abs(mid[0] - mid[1]) < 1e-9);
+  // one track only: no crossfade
+  assert.deepEqual(trackGains(2000, win, 5460, null, 1), [musicGain(2000, win, 5460)]);
+});
+
+test("a scene without a voice file is ducked softly while the other scenes have voice (scene 5 placeholder)", () => {
+  const vo = [8, 8, 14, 23, null, 22, 25, 10, 8];
+  const p = planScenes(vo);
+  const w = speechWindows(p.starts, vo, p.durations);
+  assert.equal(w.length, 9);
+  const s5 = w.find((x) => x[0] === p.starts[4] + LEAD_FRAMES);
+  assert.ok(s5, "window for the voice-less scene");
+  assert.ok(s5[2] > 0 && s5[2] < 1, "soft depth");
+  // with no voice at all, nothing is ducked (the silent draft)
+  assert.equal(speechWindows(planScenes(none).starts, none, planScenes(none).durations).length, 0);
+  // soft duck is shallower than the full -18 dB
+  const full = musicGain(p.starts[4] + 600, [], p.total);
+  const soft = musicGain(p.starts[4] + 600, w, p.total);
+  const hard = musicGain(p.starts[3] + 200, w, p.total);
+  assert.ok(soft < full && soft > hard);
+  assert.ok(Math.abs(20 * Math.log10(soft / full) + 8) < 1, `soft duck ${20 * Math.log10(soft / full)} dB`);
 });

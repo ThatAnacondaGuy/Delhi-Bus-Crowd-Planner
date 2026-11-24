@@ -3,7 +3,7 @@ import { useCurrentFrame, useVideoConfig } from "remotion";
 import { C, outCubic, prog, springSoft } from "../theme";
 import { Caption, Chip, Scene, Sfx } from "../components/ui";
 import { Qr } from "../components/Qr";
-import { SCENE_CAPTIONS, chunkSpans } from "../captions";
+import { sceneCaptionSpans } from "../captions";
 import { LEAD_FRAMES, TAIL_FRAMES } from "../timing";
 import { useAssets } from "../assets";
 
@@ -46,8 +46,7 @@ export const Scene09: React.FC = () => {
   const { vo } = useAssets();
   const drift = Math.sin((f / durationInFrames) * Math.PI) * 6;
   const fadeOut = prog(f, durationInFrames - 9, 9);
-  const speechEnd = vo[8] != null ? Math.round(vo[8]! * 30) : 150;
-  const spans = chunkSpans(SCENE_CAPTIONS[8], LEAD_FRAMES + 6, Math.max(speechEnd, 120) - 0);
+  const spans = sceneCaptionSpans(9, { voFrames: vo[8] != null ? Math.round(vo[8]! * 30) : null, duration: durationInFrames, base: 270, lead: LEAD_FRAMES });
   void TAIL_FRAMES;
   return (
     <Scene bg={C.paper}>
@@ -70,7 +69,7 @@ export const Scene09: React.FC = () => {
       </div>
       <Caption spans={spans} bottom={34} dark />
       <div style={{ position: "absolute", inset: 0, background: C.paper, opacity: fadeOut }} />
-      <Sfx name="chime" at={6} volume={0.5} />
+      <Sfx name="chime" at={6} volume={0.9} />
     </Scene>
   );
 };

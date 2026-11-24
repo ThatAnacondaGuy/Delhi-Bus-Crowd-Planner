@@ -103,3 +103,56 @@ export function sceneSpans(scene: number, chunks: string[], voFrames: number | n
   const end = voFrames != null ? voFrames : duration - 40;
   return chunkSpans(chunks, lead + 6, Math.max(end, 120));
 }
+
+/**
+ * The caption spans of one scene (1 to 9) in scene-local frames, from the script text and the voice length.
+ * The scenes draw these and scripts/captions_srt.mjs writes the same spans to the .srt, so the two always agree.
+ *  - voFrames: clean voice length in frames, or null when the scene has no voice file yet
+ *  - base: the scene's script length; duration: its length in this render; lead: lead-in frames of the clean voice
+ *  - partStarts / tail: scene 5 only (shot starts in frames, tail room after the voice)
+ */
+export function sceneCaptionSpans(
+  scene: number,
+  o: { voFrames: number | null; duration: number; base: number; lead: number; tail?: number; partStarts?: number[] },
+): Span[] {
+  const { voFrames, duration: D, base, lead } = o;
+  const chunks = SCENE_CAPTIONS[scene - 1];
+  switch (scene) {
+    case 1:
+      return chunkSpans(chunks, lead + 12, Math.max(voFrames ?? 240, 160));
+    case 2:
+      return chunkSpans(chunks, lead + 6, Math.max(voFrames ?? D - 40, 150));
+    case 5: {
+      const starts = o.partStarts ?? [0, 300, 540, 810, 1140];
+      const ends = [...starts.slice(1), D];
+      const speechEnd = (i: number) => Math.max(starts[i] + 60, ends[i] - (voFrames != null ? (o.tail ?? 18) / 2 : 6));
+      return PLANNER_PARTS.flatMap((c, i) => chunkSpans(c, starts[i] + lead + 6, speechEnd(i)));
+    }
+    case 9:
+      return chunkSpans(chunks, lead + 6, Math.max(voFrames ?? 150, 120));
+    default:
+      return sceneSpans(scene, chunks, voFrames, base, D, lead);
+  }
+}
+
+/** SubRip text for a list of spans placed at global frame offsets (fps frames per second). Overlaps are trimmed. */
+export function toSrt(entries: { text: string; from: number; to: number }[], fps: number): string {
+  const sorted = [...entries].sort((a, b) => a.from - b.from);
+  const stamp = (frames: number) => {
+    const ms = Math.round((frames / fps) * 1000);
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    const p = (n: number, w = 2) => String(n).padStart(w, "0");
+    return `${p(h)}:${p(m)}:${p(s)},${p(ms % 1000, 3)}`;
+  };
+  return (
+    sorted
+      .map((e, i) => {
+        const next = sorted[i + 1];
+        const to = next ? Math.min(e.to, next.from) : e.to;
+        return `${i + 1}\n${stamp(e.from)} --> ${stamp(Math.max(to, e.from + 1))}\n${e.text}\n`;
+      })
+      .join("\n")
+  );
+}

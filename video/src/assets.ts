@@ -8,17 +8,32 @@ export type Assets = {
   vo: (number | null)[];
   /** start of each of the five planner parts in scene 5, seconds, when found by prep_audio.sh */
   parts: number[] | null;
-  music: string | null;
+  /** music tracks in play order (public/music-1.mp3, music-2.mp3 ...): the second crossfades in near 1:55 */
+  music: string[];
+  /** length in seconds of each music track */
+  musicSeconds: number[];
+  /** linear trim per track that brings it to a common loudness (measured by scan_assets.mjs) */
+  musicTrim: number[];
   sfx: string[];
+  /** linear trim per sound effect file that tames the loud ones (measured by scan_assets.mjs); missing = 1 */
+  sfxTrim: Record<string, number>;
   clips: string[];
 };
 
-export const NO_ASSETS: Assets = { vo: Array(9).fill(null), parts: null, music: null, sfx: [], clips: [] };
+export const NO_ASSETS: Assets = { vo: Array(9).fill(null), parts: null, music: [], musicSeconds: [], musicTrim: [], sfx: [], sfxTrim: {}, clips: [] };
 
 export const AssetsContext = createContext<Assets>(NO_ASSETS);
 export const useAssets = () => useContext(AssetsContext);
 
-type Listing = { vo: string[]; parts?: number[] | null; music: string | null; sfx: string[]; clips: string[] };
+type Listing = {
+  vo: string[];
+  parts?: number[] | null;
+  music: string[] | string | null;
+  musicTrim?: number[];
+  sfx: string[];
+  sfxTrim?: Record<string, number>;
+  clips: string[];
+};
 
 /** Called from calculateMetadata: reads assets.json and the length of each clean voice file. Never throws. */
 export async function loadAssets(): Promise<Assets> {
@@ -41,11 +56,24 @@ export async function loadAssets(): Promise<Assets> {
       }
     }),
   );
+  const music = Array.isArray(listing.music) ? listing.music : listing.music ? [listing.music] : [];
+  const musicSeconds = await Promise.all(
+    music.map(async (m) => {
+      try {
+        return await getAudioDurationInSeconds(staticFile(m));
+      } catch {
+        return 0;
+      }
+    }),
+  );
   return {
     vo,
     parts: Array.isArray(listing.parts) && listing.parts.length === 5 ? listing.parts : null,
-    music: listing.music ?? null,
+    music,
+    musicSeconds,
+    musicTrim: music.map((_, i) => listing!.musicTrim?.[i] ?? 1),
     sfx: listing.sfx ?? [],
+    sfxTrim: listing.sfxTrim ?? {},
     clips: listing.clips ?? [],
   };
 }

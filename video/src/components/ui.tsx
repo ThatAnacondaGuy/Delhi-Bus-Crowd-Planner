@@ -33,13 +33,24 @@ export const Scene: React.FC<{ fadeIn?: number; fadeOut?: number; bg?: string; c
 
 /* ------------------------------------------------------------------ sound effects (only when the file exists) */
 
-export const Sfx: React.FC<{ name: string; at: number; volume?: number; len?: number }> = ({ name, at, volume = 0.4, len }) => {
-  const { sfx } = useAssets();
+/**
+ * `volume` is a level relative to the file after its loudness trim (scan_assets.mjs); `fade` (frames) fades the effect in and out
+ * inside its length, used for the street ambience so it never starts or stops with a click.
+ */
+export const Sfx: React.FC<{ name: string; at: number; volume?: number; len?: number; fade?: number }> = ({ name, at, volume = 0.4, len, fade = 0 }) => {
+  const { sfx, sfxTrim } = useAssets();
   const file = matchSfx(sfx, name);
   if (!file) return null;
+  const trim = sfxTrim[file] ?? 1;
+  const vol = (f: number) => {
+    if (!fade) return volume * trim;
+    const fin = Math.min(1, f / fade);
+    const fout = len ? Math.min(1, Math.max(0, (len - f) / fade)) : 1;
+    return volume * trim * Math.min(fin, fout);
+  };
   return (
     <Sequence from={Math.round(at)} durationInFrames={len} layout="none">
-      <Audio src={staticFile(`sfx/${file}`)} volume={volume} />
+      <Audio src={staticFile(`sfx/${file}`)} volume={vol} />
     </Sequence>
   );
 };

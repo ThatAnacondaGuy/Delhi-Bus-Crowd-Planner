@@ -2,7 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { C, outCubic, prog, springSoft } from "../theme";
 import { Caption, Chip, FadeIn, Scene, Sfx, Words } from "../components/ui";
-import { SCENE_CAPTIONS, chunkSpans } from "../captions";
+import { sceneCaptionSpans } from "../captions";
 import { LEAD_FRAMES } from "../timing";
 import { useAssets } from "../assets";
 import type { Level } from "../theme";
@@ -14,8 +14,7 @@ export const Scene02: React.FC = () => {
   const { fps, durationInFrames: D } = useVideoConfig();
   const { vo } = useAssets();
   const wipe = prog(f, 0, 15, outCubic);
-  const speechEnd = vo[1] != null ? Math.round(vo[1]! * 30) : D - 40;
-  const spans = chunkSpans(SCENE_CAPTIONS[1], LEAD_FRAMES + 6, Math.max(speechEnd, 150));
+  const spans = sceneCaptionSpans(2, { voFrames: vo[1] != null ? Math.round(vo[1]! * 30) : null, duration: D, base: 270, lead: LEAD_FRAMES });
   return (
     <Scene fadeOut={12} bg={C.paper}>
       <div style={{ position: "absolute", inset: 0, background: C.paper, clipPath: `inset(0 ${(1 - wipe) * 100}% 0 0)` }}>
@@ -40,7 +39,7 @@ export const Scene02: React.FC = () => {
         </div>
       </div>
       <Caption spans={spans} bottom={44} />
-      <Sfx name="chime" at={4} volume={0.35} />
+      <Sfx name="chime" at={4} volume={0.9} />
     </Scene>
   );
 };

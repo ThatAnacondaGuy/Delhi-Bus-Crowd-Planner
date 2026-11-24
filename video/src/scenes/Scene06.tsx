@@ -4,7 +4,7 @@ import N from "../numbers.json";
 import { C, clamp01, fmt, inOutCubic, lerp, outCubic, prog } from "../theme";
 import { Cam, Caption, DrawBox, FadeIn, Laptop, Scene, Sfx, Shot, TapRing, World, Cursor, useClock } from "../components/ui";
 import { R, capMeta, capUrl, cx, cy } from "../captures";
-import { SCENE_CAPTIONS, sceneSpans } from "../captions";
+import { sceneCaptionSpans } from "../captions";
 import { LEAD_FRAMES } from "../timing";
 import { useAssets } from "../assets";
 
@@ -79,7 +79,7 @@ export const Scene06: React.FC = () => {
   const clockOn = prog(u, 350, 12) * (1 - prog(u, 548, 12));
   const stripOn = prog(u, 604, 14);
 
-  const spans = sceneSpans(6, SCENE_CAPTIONS[5], vo[5] != null ? Math.round(vo[5]! * 30) : null, 660, D, LEAD_FRAMES);
+  const spans = sceneCaptionSpans(6, { voFrames: vo[5] != null ? Math.round(vo[5]! * 30) : null, duration: D, base: 660, lead: LEAD_FRAMES });
   const row = { ...row1 };
   return (
     <Scene fadeIn={0} fadeOut={10}>
@@ -125,7 +125,7 @@ export const Scene06: React.FC = () => {
       <Caption spans={spans} bottom={30} />
       <FadeIn at={0} dur={1}><span /></FadeIn>
       <Sfx name="tap" at={98} />
-      <Sfx name="tap" at={152} volume={0.25} />
+      <Sfx name="tap" at={152} volume={0.4} />
       <Sfx name="map-swoosh" at={350} volume={0.35} />
     </Scene>
   );

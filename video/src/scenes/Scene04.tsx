@@ -4,7 +4,7 @@ import N from "../numbers.json";
 import { C, inOutCubic, lerp, outCubic, prog, springSoft } from "../theme";
 import { Caption, Chip, Scene, Sfx, useClock } from "../components/ui";
 import { Person } from "../components/Person";
-import { SCENE_CAPTIONS, sceneSpans } from "../captions";
+import { sceneCaptionSpans } from "../captions";
 import { LEAD_FRAMES } from "../timing";
 import { useAssets } from "../assets";
 
@@ -71,7 +71,7 @@ export const Scene04: React.FC = () => {
   const grow = prog(u, 696, 24, inOutCubic); // last 24 frames: scale up to fill the middle
   const chipScale = lerp(0.6, 1, chipT) * lerp(1, 2.1, grow);
 
-  const spans = sceneSpans(4, SCENE_CAPTIONS[3], vo[3] != null ? Math.round(vo[3]! * 30) : null, 720, D, LEAD_FRAMES);
+  const spans = sceneCaptionSpans(4, { voFrames: vo[3] != null ? Math.round(vo[3]! * 30) : null, duration: D, base: 720, lead: LEAD_FRAMES });
 
   return (
     <Scene fadeIn={12} fadeOut={0}>
@@ -141,7 +141,7 @@ export const Scene04: React.FC = () => {
         </div>
         <div style={{ position: "absolute", left: 420, top: 810, width: 1080, textAlign: "center", fontSize: 44, color: C.grey, opacity: prog(u, 372, 14, outCubic) }}>never more than a bus can hold</div>
       </div>
-      <Sfx name="riser" at={288} volume={0.3} />
+      <Sfx name="riser" at={252} volume={0.5} />
 
       {/* step 4: seats, rated total and the marker */}
       <div style={{ position: "absolute", inset: 0, opacity: stepFade(432, 590) }}>
@@ -153,7 +153,7 @@ export const Scene04: React.FC = () => {
         <div style={{ position: "absolute", left: marker - 5, top: barY - 90, width: 10, height: 140, background: C.ink, borderRadius: 5, opacity: prog(u, 492, 10) }} />
         <div style={{ position: "absolute", left: marker - 130, top: barY - 150, width: 260, textAlign: "center", fontSize: 40, fontWeight: 700, color: C.ink, opacity: prog(u, 492, 10) }}>people on board</div>
       </div>
-      <Sfx name="pop" at={432} volume={0.3} />
+      <Sfx name="pop" at={432} volume={0.5} />
 
       {/* step 5: the level */}
       <div style={{ position: "absolute", left: 0, right: 0, top: 440, display: "flex", justifyContent: "center", opacity: chipT }}>
@@ -163,7 +163,7 @@ export const Scene04: React.FC = () => {
       </div>
 
       {[0, 144, 288, 432, 576].map((t, i) => (
-        <Sfx key={i} name="tap" at={t + 4} volume={0.3} />
+        <Sfx key={i} name="tap" at={t + 4} volume={0.4} />
       ))}
       <Caption spans={spans} bottom={30} />
     </Scene>
