@@ -28,7 +28,7 @@
     },
     keyLabel: { en: "What the levels mean", hi: "भीड़ के स्तर का मतलब" },
     board: { en: "Board here", hi: "यहाँ चढ़ें" },
-    change: { en: "Change here", hi: "यहाँ बस बदलें" },
+    changeHere: { en: "Change here", hi: "यहाँ बस बदलें" },
     alight: { en: "Get off here", hi: "यहाँ उतरें" },
     change: { en: "Change", hi: "बदलें" },
     from: { en: "From", hi: "कहाँ से" },
@@ -597,6 +597,7 @@
   }
 
   const PIN = { board: "▲", change: "◆", alight: "■" };
+  const PIN_LABEL = { board: "board", change: "changeHere", alight: "alight" };
 
   // where the rider gets on, changes and gets off, read from the first and last drawn point of each bus leg
   function stopPoints(opt) {
@@ -626,7 +627,7 @@
     const legend = h("div", "legend");
     for (const lv of ["seats", "standing", "crowded", "no_data"]) legend.append(h("span", "l-" + lv, pick(LEVEL[lv])));
     const pinKey = h("div", "legend pin-key");
-    for (const k of ["board", "change", "alight"]) pinKey.append(h("span", "pin-key-item", h("span", "pin pin--" + k, PIN[k]), pick(T[k])));
+    for (const k of ["board", "change", "alight"]) pinKey.append(h("span", "pin-key-item", h("span", "pin pin--" + k, PIN[k]), pick(T[PIN_LABEL[k]])));
     openSheet(tx("mapTitle"), [legend, pinKey, holder], opener);
     let L;
     try {
@@ -654,7 +655,7 @@
     const pins = stopPoints(opt);
     for (const pt of pins) {
       const m = L.marker(pt.at, { icon: pinIcon(L, pt.kind), keyboard: false, zIndexOffset: pt.kind === "change" ? 0 : 200 });
-      m.bindTooltip(h("span", "", pt.name ? `${pick(T[pt.kind])}: ${pt.name}` : pick(T[pt.kind])), { direction: "top", offset: [0, -12] });
+      m.bindTooltip(h("span", "", pt.name ? `${pick(T[PIN_LABEL[pt.kind]])}: ${pt.name}` : pick(T[PIN_LABEL[pt.kind]])), { direction: "top", offset: [0, -12] });
       m.addTo(map);
       all.push(pt.at);
     }

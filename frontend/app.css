@@ -74,7 +74,7 @@ p { margin: 0; }
 
 /* ---------- first screen: one plain line and the key to the four levels ---------- */
 
-.tagline { padding: 0 var(--gutter) 6px; max-width: 1120px; margin: 0 auto; color: var(--muted); font-size: 15px; line-height: 1.35; }
+.tagline { padding: 0 var(--gutter) 6px; max-width: 1120px; margin: 0 auto; color: var(--muted); font-size: 16px; line-height: 1.35; }
 body[data-lang="hi"] .tagline { line-height: 1.5; }
 
 .key {
@@ -91,20 +91,7 @@ body[data-lang="hi"] .tagline { line-height: 1.5; }
 
 .key::-webkit-scrollbar { display: none; }
 
-/* English fits as a tidy 2 x 2 block; the longer Hindi words stay a single swipeable row so the first card keeps its place */
-@media (max-width: 599px) {
-  body:not([data-lang="hi"]) .key {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 4px 6px;
-    margin-inline: 0;
-    padding-inline: 0;
-    overflow: visible;
-    -webkit-mask-image: none;
-    mask-image: none;
-  }
-  body:not([data-lang="hi"]) .key-item { padding: 2px 8px; font-size: 12.5px; }
-}
+/* At 16 px the four level words do not fit a 2 x 2 block on a phone, so under 600 px the key is one swipeable row with a fade at the edge (as in Hindi); the first card keeps its place */
 
 .key-item {
   flex: 0 0 auto;
@@ -113,7 +100,7 @@ body[data-lang="hi"] .tagline { line-height: 1.5; }
   gap: 6px;
   padding: 3px 10px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.3;
   white-space: nowrap;
@@ -121,7 +108,7 @@ body[data-lang="hi"] .tagline { line-height: 1.5; }
 
 .key-item.lvl-no_data { border: 1px dashed currentColor; }
 
-.key-item .dots { font-size: 12px; letter-spacing: 0.08em; white-space: nowrap; }
+.key-item .dots { font-size: 16px; letter-spacing: 0.08em; white-space: nowrap; }
 
 /* ---------- query ---------- */
 
@@ -473,7 +460,7 @@ main > .tagline { padding-inline: 0; }
 
 @media (min-width: 600px) {
   .key { flex-wrap: wrap; margin-inline: 0; padding-inline: 0; overflow: visible; -webkit-mask-image: none; mask-image: none; gap: 6px 10px; }
-  .key-item { font-size: 14px; padding: 4px 10px; }
+  .key-item { padding: 4px 10px; }
 }
 
 @media (min-width: 900px) {
