@@ -244,3 +244,19 @@ def test_operator_tiles_slider_ticks_wrapped_notes_and_sticky_header():
     assert re.search(r"\.op-flags\s*\{[^}]*min-width:\s*(?:1[5-9]|2\d)\dpx", css) and "white-space: normal" in css
     assert 'id="ticks"' in html and "renderTicks" in js
     assert "prefers-reduced-motion" in css or "transition" not in css
+
+
+# ---------------------------------------------------------------- the compact demo banner (Task 21b)
+
+def test_demo_banner_is_one_short_line_on_phones_with_the_full_sentence_behind_a_tap():
+    data = (FRONT / "data.js").read_text(encoding="utf-8")
+    css = text("app.css")
+    assert "demo-short" in data and "demo-full" in data and "demo-more" in data
+    assert "Full planner on GitHub ›" in data and "Demo trips" in data      # honest and short
+    assert 'setAttribute("aria-expanded"' in data and "demo-open" in data  # the tap opens the full sentence
+    base = re.search(r"\.demo-banner\s*\{([^}]*)\}", css).group(1)
+    assert re.search(r"font-size:\s*(1[6-9]|2\d)px", base), "phone banner text must be at least 16px"
+    assert re.search(r"\.demo-short\s*\{[^}]*white-space:\s*nowrap", css)   # one line, never wraps
+    assert re.search(r"\.demo-full\s*\{[^}]*display:\s*none", css)           # hidden on phones until tapped
+    wide = re.search(r"@media \(min-width: 600px\)\s*\{\s*\.demo-banner[^}]*\}\s*\.demo-banner \.demo-short\s*\{\s*display:\s*none", css)
+    assert wide, "from 600px the full sentence replaces the short line"

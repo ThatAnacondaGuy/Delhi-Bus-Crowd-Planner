@@ -134,24 +134,40 @@
     return url;
   }
 
-  // the slim banner at the top of each page; every number in it comes from the data files
+  // the slim banner at the top of each page; every number in it comes from the data files.
+  // On phones it is one short line (a button that opens the full sentence, and the link to the code); from 600 px up
+  // the full sentence is always shown. The two parts are switched by app.css.
   async function banner(box, kind, lang) {
     if (!box) return;
     const meta = await once("places.json");
-    const gh = h("a", "", "GitHub");
-    gh.href = cfg.github || "#";
-    gh.rel = "noopener";
-    if (lang === "hi" && kind !== "operator") {
-      box.lang = "hi";
-      box.replaceChildren(`लाइव डेमो: ${(meta.places || []).length} जगहों के लिए ${(meta.slots || []).length} निकलने के समयों पर तैयार जवाब, उसी मॉडल से निकाले गए। पूरा प्लानर (कोई भी जगह, कोई भी समय) कोड से चलता है, जो यहाँ है: `, gh, "।");
-      box.hidden = false;
-      return;
+    const hi = lang === "hi" && kind !== "operator";
+    const gh = () => { const a = h("a", "", "GitHub"); a.href = cfg.github || "#"; a.rel = "noopener"; return a; };
+
+    const full = h("span", "demo-full");
+    if (hi) {
+      full.append(`लाइव डेमो: ${(meta.places || []).length} जगहों के लिए ${(meta.slots || []).length} निकलने के समयों पर तैयार जवाब, उसी मॉडल से निकाले गए। पूरा प्लानर (कोई भी जगह, कोई भी समय) कोड से चलता है, जो यहाँ है: `, gh(), "।");
+    } else {
+      const lead = kind === "operator"
+        ? "Live demo: ready-made tables, maps and route strips from the same model. The full planner (any place, any time) runs from the code on "
+        : `Live demo: ready-made answers for ${(meta.places || []).length} places at ${(meta.slots || []).length} departure times, computed by the same model. The full planner (any place, any time) runs from the code on `;
+      full.append(lead, gh(), ".");
     }
-    box.removeAttribute("lang");
-    const lead = kind === "operator"
-      ? "Live demo: ready-made tables, maps and route strips from the same model. The full planner (any place, any time) runs from the code on "
-      : `Live demo: ready-made answers for ${(meta.places || []).length} places at ${(meta.slots || []).length} departure times, computed by the same model. The full planner (any place, any time) runs from the code on `;
-    box.replaceChildren(lead, gh, ".");
+
+    const short = h("span", "demo-short");
+    const more = h("button", "demo-more", hi ? "तैयार डेमो" : "Demo trips");
+    more.type = "button";
+    more.setAttribute("aria-expanded", "false");
+    const link = gh();
+    link.textContent = hi ? "पूरा प्लानर GitHub पर ›" : "Full planner on GitHub ›";
+    short.append(more, " · ", link);
+    more.addEventListener("click", () => {
+      const open = box.classList.toggle("demo-open");
+      more.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+
+    if (hi) box.lang = "hi"; else box.removeAttribute("lang");
+    box.classList.remove("demo-open");
+    box.replaceChildren(short, full);
     box.hidden = false;
   }
   function h(tag, cls, text) {

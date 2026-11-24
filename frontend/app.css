@@ -490,13 +490,27 @@ main > .tagline { padding-inline: 0; }
 /* ---------- static demo banner (shown only when the build's config.js switches the demo on) ---------- */
 
 .demo-banner {
-  padding: 6px var(--gutter);
+  padding: 2px var(--gutter);
   background: #e6edf4;
   border-bottom: 1px solid var(--line);
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.35;
 }
 
-@media (min-width: 600px) { .demo-banner { padding: 8px var(--gutter); font-size: 14px; line-height: 1.4; } }
+/* phones: one short line; the button opens the full sentence under it */
+.demo-banner .demo-short { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.demo-banner .demo-full { display: none; padding-top: 2px; }
+.demo-banner.demo-open .demo-full { display: block; }
+.demo-banner .demo-more {
+  font: inherit; color: inherit; background: none; border: 0; padding: 4px 0; margin: 0;
+  text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer;
+}
+
+/* wider screens: the full sentence, no button */
+@media (min-width: 600px) {
+  .demo-banner { padding: 8px var(--gutter); font-size: 14px; line-height: 1.4; }
+  .demo-banner .demo-short { display: none; }
+  .demo-banner .demo-full, .demo-banner.demo-open .demo-full { display: block; padding-top: 0; }
+}
 
 .demo-banner a { color: var(--accent); font-weight: 600; }
