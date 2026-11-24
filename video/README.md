@@ -44,6 +44,8 @@ Put them here, then run the two commands under "To finish" below. Every file is 
 | Sound effects | `video/public/sfx/` with names like `whoosh`, `tap`, `pop`, `chime`, `riser`, `city-ambience`, `map-swoosh` (matched loosely by file name) | Placed at the cues the script names: street ambience and a whoosh in scene 1, taps on every tap ring, a chime on *Usually seats*, a riser as the crowd forms, a whoosh under the slider sweep. A missing effect is simply skipped. |
 | Stock footage for the opening | `video/public/clips/*.mp4` | Replaces the motion-graphics bus stop in scene 1 (graded dark, with the phone, the clock and the question on top). |
 
+If you keep your files in `video/extra resources/` (`voice over /scene-NN.wav`, `sound effects/*.mp3`, a music file with "background" or "music" in its name), run `bash video/scripts/import_extra.sh` first: it copies them into the folders above and never touches the originals. `video/extra resources/` is git-ignored like the rest of the media.
+
 The cleaned voice lengths are read by Remotion's `calculateMetadata`, so the timeline resizes itself. If the total would pass
 3:10 the render prints a warning (the voice itself is too long: re-record or use the "Cut first" lines of the script).
 
